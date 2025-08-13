@@ -1,8 +1,733 @@
-/*
+/**
+ * CLIPPY AI Assistant - Plugin Styles
+ * Comprehensive styling for all UI components
+ */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+/* ===== GENERAL MODAL STYLES ===== */
+.modal.clippy-modal {
+  --clippy-primary: #6366f1;
+  --clippy-primary-hover: #5b5cf6;
+  --clippy-success: #10b981;
+  --clippy-warning: #f59e0b;
+  --clippy-error: #ef4444;
+  --clippy-bg: var(--background-primary);
+  --clippy-bg-secondary: var(--background-secondary);
+  --clippy-text: var(--text-normal);
+  --clippy-text-muted: var(--text-muted);
+  --clippy-border: var(--background-modifier-border);
+  --clippy-radius: 8px;
+  --clippy-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
 
-If your plugin does not need CSS, delete this file.
+.clippy-modal-description {
+  color: var(--clippy-text-muted);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
 
-*/
+/* ===== AI ENHANCEMENT MODAL ===== */
+.clippy-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 70vh;
+}
+
+.clippy-tab-buttons {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 2px solid var(--clippy-border);
+  padding-bottom: 0.5rem;
+}
+
+.clippy-tab-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--clippy-text-muted);
+  cursor: pointer;
+  border-radius: var(--clippy-radius);
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.clippy-tab-btn:hover {
+  background: var(--clippy-bg-secondary);
+  color: var(--clippy-text);
+}
+
+.clippy-tab-btn.active {
+  background: var(--clippy-primary);
+  color: white;
+  box-shadow: var(--clippy-shadow);
+}
+
+.clippy-tab-content {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 300px;
+}
+
+.clippy-tab-pane {
+  display: none;
+  padding: 1rem 0;
+}
+
+.clippy-tab-pane.active {
+  display: block;
+}
+
+/* ===== QUALITY SCORE ===== */
+.clippy-quality-score {
+  margin-bottom: 1.5rem;
+}
+
+.clippy-quality-score h3 {
+  margin-bottom: 0.5rem;
+  color: var(--clippy-text);
+  font-size: 1.1rem;
+}
+
+.clippy-score-bar {
+  width: 100%;
+  height: 12px;
+  background: var(--clippy-bg-secondary);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.clippy-score-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  border-radius: 6px;
+}
+
+/* ===== SUMMARY, TOPICS, RECOMMENDATIONS ===== */
+.clippy-summary,
+.clippy-topics,
+.clippy-recommendations {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+.clippy-summary h3,
+.clippy-topics h3,
+.clippy-recommendations h3 {
+  margin-bottom: 0.75rem;
+  color: var(--clippy-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.clippy-topics ul,
+.clippy-recommendations ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.clippy-topics li,
+.clippy-recommendations li {
+  margin-bottom: 0.25rem;
+  color: var(--clippy-text);
+}
+
+/* ===== TAG SUGGESTIONS ===== */
+.clippy-tag-suggestions {
+  margin-bottom: 1.5rem;
+}
+
+.clippy-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+.clippy-tag {
+  background: var(--clippy-primary);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.clippy-confidence {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.clippy-confidence-high {
+  background: var(--clippy-success);
+  color: white;
+}
+
+.clippy-confidence-medium {
+  background: var(--clippy-warning);
+  color: white;
+}
+
+.clippy-confidence-low {
+  background: var(--clippy-error);
+  color: white;
+}
+
+.clippy-reason {
+  color: var(--clippy-text-muted);
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.clippy-add-tag-btn {
+  padding: 0.25rem 0.75rem;
+  background: var(--clippy-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.clippy-add-tag-btn:hover {
+  background: var(--clippy-primary-hover);
+}
+
+.clippy-add-tag-btn:disabled {
+  background: var(--clippy-success);
+  cursor: not-allowed;
+}
+
+/* ===== FORMAT SUGGESTIONS ===== */
+.clippy-format-suggestions {
+  margin-bottom: 1.5rem;
+}
+
+.clippy-suggestion-item {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+.clippy-suggestion-item h4 {
+  margin-bottom: 0.5rem;
+  color: var(--clippy-text);
+  font-size: 0.9rem;
+}
+
+.clippy-before,
+.clippy-after {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  background: var(--clippy-bg);
+  border-radius: 4px;
+  font-family: var(--font-monospace);
+  font-size: 0.8rem;
+}
+
+.clippy-before strong,
+.clippy-after strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.clippy-apply-btn {
+  padding: 0.5rem 1rem;
+  background: var(--clippy-success);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.clippy-apply-btn:hover {
+  background: #059669;
+}
+
+.clippy-apply-btn:disabled {
+  background: var(--clippy-text-muted);
+  cursor: not-allowed;
+}
+
+/* ===== PREVIEW ===== */
+.clippy-preview {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+/* ===== CHAT INTERFACE ===== */
+.clippy-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 500px;
+}
+
+.clippy-chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+  max-height: 300px;
+}
+
+.clippy-chat-message {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: flex-start;
+}
+
+.clippy-chat-message.clippy-user {
+  flex-direction: row-reverse;
+}
+
+.clippy-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--clippy-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.clippy-user .clippy-avatar {
+  background: var(--clippy-success);
+}
+
+.clippy-message-content {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--clippy-bg);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+  max-width: 80%;
+}
+
+.clippy-user .clippy-message-content {
+  background: var(--clippy-primary);
+  color: white;
+}
+
+.clippy-chat-input {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.clippy-chat-textarea {
+  flex: 1;
+  min-height: 60px;
+  padding: 0.75rem;
+  border: 1px solid var(--clippy-border);
+  border-radius: var(--clippy-radius);
+  background: var(--clippy-bg);
+  color: var(--clippy-text);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.clippy-send-btn {
+  padding: 0.75rem 1.5rem;
+  background: var(--clippy-primary);
+  color: white;
+  border: none;
+  border-radius: var(--clippy-radius);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.clippy-send-btn:hover {
+  background: var(--clippy-primary-hover);
+}
+
+.clippy-send-btn:disabled {
+  background: var(--clippy-text-muted);
+  cursor: not-allowed;
+}
+
+/* ===== TAG SUGGESTION MODAL ===== */
+.clippy-tag-modal {
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.clippy-filter-container {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+.clippy-filter-container h3 {
+  margin-bottom: 0.75rem;
+  color: var(--clippy-text);
+  font-size: 0.9rem;
+}
+
+.clippy-filter-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.clippy-filter-btn {
+  padding: 0.5rem 1rem;
+  background: var(--clippy-bg);
+  color: var(--clippy-text-muted);
+  border: 1px solid var(--clippy-border);
+  border-radius: var(--clippy-radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+}
+
+.clippy-filter-btn:hover {
+  background: var(--clippy-bg-secondary);
+  color: var(--clippy-text);
+}
+
+.clippy-filter-btn.active {
+  background: var(--clippy-primary);
+  color: white;
+  border-color: var(--clippy-primary);
+}
+
+.clippy-suggestions-container {
+  margin-bottom: 1.5rem;
+}
+
+.clippy-suggestions-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.clippy-suggestion-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+  align-items: flex-start;
+}
+
+.clippy-suggestion-checkbox {
+  margin-top: 0.25rem;
+  cursor: pointer;
+}
+
+.clippy-suggestion-info {
+  flex: 1;
+}
+
+.clippy-tag-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.clippy-tag-name {
+  font-weight: 600;
+  color: var(--clippy-primary);
+}
+
+.clippy-tag-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.clippy-source,
+.clippy-category {
+  font-size: 0.8rem;
+  color: var(--clippy-text-muted);
+}
+
+.clippy-reason {
+  font-size: 0.8rem;
+  color: var(--clippy-text);
+  font-style: italic;
+}
+
+.clippy-no-suggestions {
+  text-align: center;
+  color: var(--clippy-text-muted);
+  padding: 2rem;
+  font-style: italic;
+}
+
+/* ===== SELECTED TAGS PREVIEW ===== */
+.clippy-selected-preview {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  border: 1px solid var(--clippy-border);
+}
+
+.clippy-selected-preview h3 {
+  margin-bottom: 0.75rem;
+  color: var(--clippy-text);
+  font-size: 0.9rem;
+}
+
+.clippy-selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.clippy-selected-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--clippy-success);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.clippy-remove-tag {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.25rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clippy-remove-tag:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.clippy-no-selection {
+  color: var(--clippy-text-muted);
+  font-style: italic;
+}
+
+/* ===== QUICK TAG MODAL ===== */
+.clippy-quick-tag-modal {
+  max-width: 400px;
+}
+
+.clippy-tag-filter {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--clippy-border);
+  border-radius: var(--clippy-radius);
+  background: var(--clippy-bg);
+  color: var(--clippy-text);
+  font-size: 1rem;
+}
+
+.clippy-quick-tags-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.clippy-quick-tag {
+  padding: 0.75rem;
+  margin-bottom: 0.25rem;
+  background: var(--clippy-bg-secondary);
+  border-radius: var(--clippy-radius);
+  cursor: pointer;
+  color: var(--clippy-text);
+  transition: all 0.2s ease;
+}
+
+.clippy-quick-tag:hover,
+.clippy-quick-tag:focus {
+  background: var(--clippy-primary);
+  color: white;
+  outline: none;
+}
+
+.clippy-no-tags {
+  text-align: center;
+  color: var(--clippy-text-muted);
+  padding: 2rem;
+  font-style: italic;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.clippy-action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--clippy-border);
+}
+
+.clippy-action-buttons .setting-item-control {
+  margin: 0;
+}
+
+.clippy-action-buttons button {
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--clippy-radius);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 768px) {
+  .clippy-tab-buttons {
+    flex-wrap: wrap;
+  }
+  
+  .clippy-action-buttons {
+    flex-direction: column;
+  }
+  
+  .clippy-filter-buttons {
+    flex-direction: column;
+  }
+  
+  .clippy-suggestion-item {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .clippy-tag-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}
+
+/* ===== ACCESSIBILITY ===== */
+.clippy-tab-btn:focus,
+.clippy-filter-btn:focus,
+.clippy-quick-tag:focus {
+  outline: 2px solid var(--clippy-primary);
+  outline-offset: 2px;
+}
+
+.clippy-suggestion-checkbox:focus {
+  outline: 2px solid var(--clippy-primary);
+  outline-offset: 1px;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes clippy-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.clippy-suggestion-item,
+.clippy-tag-item,
+.clippy-chat-message {
+  animation: clippy-fade-in 0.3s ease;
+}
+
+/* ===== ENHANCEMENT MODAL ===== */
+.clippy-original {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.clippy-original pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.clippy-instructions {
+  margin-bottom: 1rem;
+}
+
+.clippy-enhanced {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--background-secondary);
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.clippy-enhanced pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+  color: var(--text-normal);
+}
+
+.clippy-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* ===== DARK MODE ADJUSTMENTS ===== */
+.theme-dark .clippy-score-fill {
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+}
+
+.theme-dark .clippy-tag {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.theme-dark .clippy-selected-tag {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}

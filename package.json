@@ -1,24 +1,35 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "clippy-ai-assistant",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "AI-powered personal assistant for Obsidian with multi-provider support",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
-	"keywords": [],
-	"author": "",
+	"keywords": [
+		"obsidian",
+		"ai",
+		"assistant",
+		"automation",
+		"enhancement"
+	],
+	"author": "CLIPPY Team",
 	"license": "MIT",
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.27.0",
+		"node-fetch": "^2.7.0",
+		"openai": "^4.26.0"
+	},
 	"devDependencies": {
-		"@types/node": "^16.11.6",
-		"@typescript-eslint/eslint-plugin": "5.29.0",
-		"@typescript-eslint/parser": "5.29.0",
+		"@types/node": "^20.10.0",
+		"@typescript-eslint/eslint-plugin": "6.15.0",
+		"@typescript-eslint/parser": "6.15.0",
 		"builtin-modules": "3.3.0",
-		"esbuild": "0.17.3",
+		"esbuild": "0.19.10",
 		"obsidian": "latest",
-		"tslib": "2.4.0",
-		"typescript": "4.7.4"
+		"tslib": "2.6.2",
+		"typescript": "5.3.3"
 	}
 }
