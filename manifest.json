@@ -3,8 +3,10 @@
 	"name": "CLIPPY AI Assistant",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "AI-powered personal assistant for intelligent note management, content enhancement, and task automation.",
-	"author": "CLIPPY Team",
-	"authorUrl": "https://github.com/clippy-ai",
-	"isDesktopOnly": false
+	"description": "AI-powered personal assistant with multi-provider support (Ollama, OpenAI, Anthropic) for intelligent note enhancement and automated tagging.",
+	"author": "Lars Ladewig",
+	"authorUrl": "https://github.com/larsladewig",
+	"fundingUrl": "https://github.com/sponsors/larsladewig",
+	"isDesktopOnly": false,
+	"requiredApiVersion": "0.15.0"
 }

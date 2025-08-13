@@ -1,94 +1,174 @@
-# Obsidian Sample Plugin
+# 🤖 CLIPPY AI Assistant
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+> Your intelligent companion for enhanced note-taking and content management in Obsidian
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+[![GitHub release](https://img.shields.io/github/release/larsladewig/clippy-ai-assistant.svg)](https://GitHub.com/larsladewig/clippy-ai-assistant/releases/)
+[![License](https://img.shields.io/github/license/larsladewig/clippy-ai-assistant.svg)](https://github.com/larsladewig/clippy-ai-assistant/blob/main/LICENSE)
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open Sample Modal" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+CLIPPY AI Assistant is a powerful Obsidian plugin that integrates multiple AI providers to enhance your note-taking workflow with intelligent content enhancement and automated tagging.
 
-## First time developing plugins?
+## ✨ Features
 
-Quick starting guide for new plugin devs:
+### 🎯 **Multi-Provider AI Integration**
+- **Ollama** (Local AI models)
+- **OpenAI** (GPT-4, GPT-3.5-turbo)
+- **Anthropic** (Claude models)
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### 📝 **Content Enhancement**
+- Improve clarity, organization, and readability
+- Custom enhancement instructions
+- Preserve wikilinks, tags, and frontmatter
+- Grammar and spelling corrections
+- Structure optimization with headings
 
-## Releasing new releases
+### 🏷️ **Intelligent Tagging**
+- AI-powered tag suggestions with confidence scores
+- Context-aware recommendations
+- YAML-formatted tag integration
+- Preserve existing vault patterns
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+### ⚙️ **Advanced Features**
+- Vault pattern analysis and preservation
+- Secure API key management
+- Connection testing for all providers
+- Modal-based intuitive UI
+- Comprehensive error handling
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## 🚀 Installation
 
-## Adding your plugin to the community plugin list
+### Method 1: Manual Installation (Recommended)
+1. Download the latest release from [GitHub Releases](https://github.com/larsladewig/clippy-ai-assistant/releases)
+2. Extract the files to your vault's `.obsidian/plugins/clippy-ai-assistant/` directory
+3. Reload Obsidian and enable the plugin in Settings → Community Plugins
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### Method 2: BRAT (Beta Reviewers Auto-update Tool)
+1. Install the BRAT plugin
+2. Add `larsladewig/clippy-ai-assistant` to BRAT
+3. Enable the plugin in Settings → Community Plugins
 
-## How to use
-
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint (optional)
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- To use eslint with this project, make sure to install eslint from terminal:
-  - `npm install -g eslint`
-- To use eslint to analyze this project use this command:
-  - `eslint main.ts`
-  - eslint will then create a report with suggestions for code improvement by file and line number.
-- If your source code is in a folder, such as `src`, you can use eslint with this command to analyze all files in that folder:
-  - `eslint .\src\`
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+### Method 3: Development Setup
+```bash
+cd your-vault/.obsidian/plugins/
+git clone https://github.com/larsladewig/clippy-ai-assistant.git
+cd clippy-ai-assistant
+npm install
+npm run build
 ```
 
-If you have multiple URLs, you can also do:
+## ⚙️ Configuration
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+1. **Open Settings** → Community Plugins → CLIPPY AI Assistant
+2. **Select your AI provider** (Ollama, OpenAI, or Anthropic)
+3. **Configure connection details**:
+   - **Ollama**: Set server URL (default: `http://localhost:11434`) and model name
+   - **OpenAI**: Add your API key
+   - **Anthropic**: Add your API key
+4. **Test connection** using the "Test CLIPPY Connection" command
+5. **Enable features** toggle
+
+## 🎮 Usage
+
+### Commands Available in Command Palette (`Ctrl+P`):
+
+#### 🔧 **Test CLIPPY Connection**
+Verify your AI provider connection and check available models.
+
+#### ✨ **Enhance current note with AI**
+- Requires: Active note in edit mode
+- Improves content clarity and organization
+- Supports custom enhancement instructions
+- Preserves all wikilinks, tags, and frontmatter
+
+#### 🏷️ **Quick AI tagging suggestions**
+- Requires: Active note with content
+- Analyzes note content for relevant tags
+- Shows confidence scores and reasoning
+- Adds tags in YAML format to frontmatter
+
+### Ribbon Icon
+Click the sparkles (✨) icon in the left sidebar to quickly test your connection.
+
+## 🛠️ Development
+
+### Prerequisites
+- Node.js (v16 or higher)
+- npm or yarn
+- TypeScript knowledge
+
+### Setup Development Environment
+```bash
+# Clone the repository
+git clone https://github.com/larsladewig/clippy-ai-assistant.git
+cd clippy-ai-assistant
+
+# Install dependencies
+npm install
+
+# Build for development (watch mode)
+npm run dev
+
+# Build for production
+npm run build
 ```
 
-## API Documentation
+### Project Structure
+```
+├── main.ts              # Main plugin entry point
+├── src/                 # Source code (advanced structure)
+│   ├── ai/             # AI provider implementations
+│   ├── processors/     # Content processing utilities
+│   ├── ui/             # UI components and modals
+│   └── utils/          # Helper utilities
+├── styles.css          # Plugin styling
+├── manifest.json       # Plugin metadata
+└── README.md           # This file
+```
 
-See https://github.com/obsidianmd/obsidian-api
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+### Development Workflow
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Test thoroughly with different AI providers
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## 🐛 Bug Reports & Feature Requests
+
+Please use the [GitHub Issues](https://github.com/larsladewig/clippy-ai-assistant/issues) page to report bugs or request features.
+
+When reporting bugs, please include:
+- Obsidian version
+- Plugin version
+- AI provider being used
+- Steps to reproduce
+- Expected vs actual behavior
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 💖 Support
+
+If you find CLIPPY AI Assistant helpful, consider supporting the project:
+
+- ⭐ Star this repository
+- 🐛 Report bugs and suggest features
+- 💰 [Sponsor the project](https://github.com/sponsors/larsladewig)
+- ☕ [Buy me a coffee](https://buymeacoffee.com/larsladewig)
+
+## 🙏 Acknowledgments
+
+- Built with the [Obsidian Plugin API](https://github.com/obsidianmd/obsidian-api)
+- Inspired by the need for intelligent note management
+- Thanks to the Obsidian community for feedback and support
+
+---
+
+**Made with ❤️ by [Lars Ladewig](https://github.com/larsladewig)**
+
+*Enhancing your digital brain, one note at a time* 🧠✨

@@ -1,0 +1,102 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  PLUGIN_NAME: clippy-ai-assistant
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build plugin
+      run: npm run build
+      
+    - name: Create release files
+      run: |
+        mkdir release-files
+        cp main.js manifest.json styles.css release-files/
+        cd release-files
+        zip -r ../clippy-ai-assistant-${{ github.ref_name }}.zip *
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: plugin-build
+        path: |
+          main.js
+          manifest.json
+          styles.css
+          clippy-ai-assistant-${{ github.ref_name }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: plugin-build
+        
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: "CLIPPY AI Assistant v${{ steps.version.outputs.VERSION }}"
+        body: |
+          ## 🚀 What's New in v${{ steps.version.outputs.VERSION }}
+          
+          ### ✨ Features
+          - Multi-provider AI integration (Ollama, OpenAI, Anthropic)
+          - Intelligent content enhancement with custom instructions
+          - AI-powered tag suggestions with confidence scores
+          - Vault pattern preservation
+          - YAML-formatted tag integration
+          
+          ### 📦 Installation
+          1. Download the zip file below
+          2. Extract to your vault's `.obsidian/plugins/clippy-ai-assistant/` directory
+          3. Reload Obsidian and enable the plugin
+          
+          ### 🔗 Links
+          - [Documentation](https://github.com/larsladewig/clippy-ai-assistant#readme)
+          - [Report Issues](https://github.com/larsladewig/clippy-ai-assistant/issues)
+          
+          ---
+          **Full Changelog**: https://github.com/larsladewig/clippy-ai-assistant/compare/v${{ steps.version.outputs.VERSION }}
+          
+        files: |
+          main.js
+          manifest.json
+          styles.css
+          clippy-ai-assistant-${{ github.ref_name }}.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
