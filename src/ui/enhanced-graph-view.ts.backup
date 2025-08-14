@@ -1,0 +1,653 @@
+import { Component, WorkspaceLeaf, ItemView, App } from 'obsidian';
+import { KnowledgeGraphManager } from '../knowledge-graph/graph-manager';
+
+interface GraphNode {
+    id: string;
+    x: number;
+    y: number;
+    size: number;
+    color: string;
+    label: string;
+    importance: number;
+    cluster: string;
+    type: 'note' | 'cluster' | 'orphan';
+}
+
+interface GraphEdge {
+    source: string;
+    target: string;
+    weight: number;
+    type: 'explicit' | 'semantic' | 'temporal' | 'causal' | 'hierarchical';
+    color: string;
+    opacity: number;
+}
+
+interface GraphFilters {
+    showSemanticEdges: boolean;
+    showOrphans: boolean;
+    showClusters: boolean;
+    minConfidence: number;
+    nodeTypes: Set<string>;
+    edgeTypes: Set<string>;
+}
+
+export class EnhancedGraphView extends Component {
+    private containerEl: HTMLElement;
+    private canvasEl: HTMLCanvasElement;
+    private ctx: CanvasRenderingContext2D;
+    private graphManager: KnowledgeGraphManager;
+    private filters: GraphFilters;
+    private nodes: Map<string, GraphNode> = new Map();
+    private edges: GraphEdge[] = [];
+    private selectedNode: string | null = null;
+    private hoveredNode: string | null = null;
+    private isDragging = false;
+    private dragNode: string | null = null;
+    private lastMousePos = { x: 0, y: 0 };
+    private viewOffset = { x: 0, y: 0 };
+    private zoom = 1.0;
+    private animationFrame: number | null = null;
+
+    constructor(containerEl: HTMLElement, graphManager: KnowledgeGraphManager) {
+        super();
+        this.containerEl = containerEl;
+        this.graphManager = graphManager;
+        this.filters = {
+            showSemanticEdges: true,
+            showOrphans: true,
+            showClusters: true,
+            minConfidence: 0.6,
+            nodeTypes: new Set(['note', 'cluster']),
+            edgeTypes: new Set(['explicit', 'semantic'])
+        };
+    }
+
+    onload() {
+        this.setupCanvas();
+        this.setupControls();
+        this.setupEventListeners();
+        this.loadGraphData();
+        this.startRenderLoop();
+    }
+
+    onunload() {
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+        }
+    }
+
+    /**
+     * Setup the canvas element.
+     */
+    private setupCanvas(): void {
+        this.canvasEl = this.containerEl.createEl('canvas', { cls: 'clippy-enhanced-graph' });
+        this.ctx = this.canvasEl.getContext('2d')!;
+        
+        // Set canvas size
+        this.resizeCanvas();
+        
+        // Setup high DPI rendering
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.canvasEl.getBoundingClientRect();
+        this.canvasEl.width = rect.width * dpr;
+        this.canvasEl.height = rect.height * dpr;
+        this.ctx.scale(dpr, dpr);
+        this.canvasEl.style.width = rect.width + 'px';
+        this.canvasEl.style.height = rect.height + 'px';
+    }
+
+    /**
+     * Setup control panel for graph filters.
+     */
+    private setupControls(): void {
+        const controls = this.containerEl.createEl('div', { cls: 'clippy-graph-controls' });
+        
+        // Filter toggles
+        const filtersGroup = controls.createEl('div', { cls: 'clippy-control-group' });
+        filtersGroup.createEl('label', { text: 'Show:' });
+        
+        this.createToggle(filtersGroup, 'Semantic Links', this.filters.showSemanticEdges, (value) => {
+            this.filters.showSemanticEdges = value;
+            this.updateGraphDisplay();
+        });
+        
+        this.createToggle(filtersGroup, 'Orphans', this.filters.showOrphans, (value) => {
+            this.filters.showOrphans = value;
+            this.updateGraphDisplay();
+        });
+        
+        this.createToggle(filtersGroup, 'Clusters', this.filters.showClusters, (value) => {
+            this.filters.showClusters = value;
+            this.updateGraphDisplay();
+        });
+
+        // Confidence slider
+        const confidenceGroup = controls.createEl('div', { cls: 'clippy-control-group' });
+        confidenceGroup.createEl('label', { text: 'Min Confidence:' });
+        const confidenceSlider = confidenceGroup.createEl('input', {
+            type: 'range',
+            attr: { min: '0', max: '1', step: '0.1' }
+        });
+        confidenceSlider.value = this.filters.minConfidence.toString();
+        confidenceSlider.addEventListener('input', (e) => {
+            this.filters.minConfidence = parseFloat((e.target as HTMLInputElement).value);
+            this.updateGraphDisplay();
+        });
+
+        // Layout controls
+        const layoutGroup = controls.createEl('div', { cls: 'clippy-control-group' });
+        layoutGroup.createEl('button', { text: 'Reset View' }).addEventListener('click', () => {
+            this.resetView();
+        });
+        
+        layoutGroup.createEl('button', { text: 'Center Graph' }).addEventListener('click', () => {
+            this.centerGraph();
+        });
+    }
+
+    /**
+     * Setup mouse and keyboard event listeners.
+     */
+    private setupEventListeners(): void {
+        // Mouse events
+        this.canvasEl.addEventListener('mousedown', this.onMouseDown.bind(this));
+        this.canvasEl.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.canvasEl.addEventListener('mouseup', this.onMouseUp.bind(this));
+        this.canvasEl.addEventListener('wheel', this.onWheel.bind(this));
+        this.canvasEl.addEventListener('click', this.onClick.bind(this));
+
+        // Resize handling
+        window.addEventListener('resize', this.resizeCanvas.bind(this));
+
+        // Keyboard shortcuts
+        this.containerEl.addEventListener('keydown', this.onKeyDown.bind(this));
+        this.containerEl.setAttribute('tabindex', '0'); // Make focusable
+    }
+
+    /**
+     * Load and process graph data.
+     */
+    private async loadGraphData(): Promise<void> {
+        const graphData = this.graphManager.getEnhancedGraphData();
+        
+        // Convert to display format
+        this.nodes.clear();
+        this.edges = [];
+
+        // Process nodes
+        for (const node of graphData.nodes) {
+            const graphNode: GraphNode = {
+                id: node.id,
+                x: Math.random() * 800 + 100, // Initial random positioning
+                y: Math.random() * 600 + 100,
+                size: Math.max(8, Math.min(20, node.importance * 15)),
+                color: this.getNodeColor(node),
+                label: node.title,
+                importance: node.importance,
+                cluster: node.clusters[0] || 'default',
+                type: this.getNodeType(node)
+            };
+            this.nodes.set(node.id, graphNode);
+        }
+
+        // Process edges
+        for (const edge of graphData.edges) {
+            if (this.shouldShowEdge(edge)) {
+                this.edges.push({
+                    source: edge.source,
+                    target: edge.target,
+                    weight: edge.weight,
+                    type: edge.type,
+                    color: this.getEdgeColor(edge.type),
+                    opacity: Math.max(0.3, edge.confidence)
+                });
+            }
+        }
+
+        // Apply force-directed layout
+        this.applyForceLayout();
+    }
+
+    /**
+     * Apply force-directed layout algorithm.
+     */
+    private applyForceLayout(): void {
+        const iterations = 100;
+        const nodes = Array.from(this.nodes.values());
+        
+        for (let i = 0; i < iterations; i++) {
+            // Repulsion between all nodes
+            for (let j = 0; j < nodes.length; j++) {
+                for (let k = j + 1; k < nodes.length; k++) {
+                    const nodeA = nodes[j];
+                    const nodeB = nodes[k];
+                    
+                    const dx = nodeA.x - nodeB.x;
+                    const dy = nodeA.y - nodeB.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 0) {
+                        const repulsion = 1000 / (distance * distance);
+                        const fx = (dx / distance) * repulsion;
+                        const fy = (dy / distance) * repulsion;
+                        
+                        nodeA.x += fx;
+                        nodeA.y += fy;
+                        nodeB.x -= fx;
+                        nodeB.y -= fy;
+                    }
+                }
+            }
+            
+            // Attraction along edges
+            for (const edge of this.edges) {
+                const nodeA = this.nodes.get(edge.source);
+                const nodeB = this.nodes.get(edge.target);
+                
+                if (nodeA && nodeB) {
+                    const dx = nodeB.x - nodeA.x;
+                    const dy = nodeB.y - nodeA.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance > 0) {
+                        const attraction = distance * 0.01 * edge.weight;
+                        const fx = (dx / distance) * attraction;
+                        const fy = (dy / distance) * attraction;
+                        
+                        nodeA.x += fx;
+                        nodeA.y += fy;
+                        nodeB.x -= fx;
+                        nodeB.y -= fy;
+                    }
+                }
+            }
+            
+            // Damping
+            for (const node of nodes) {
+                node.x *= 0.9;
+                node.y *= 0.9;
+            }
+        }
+    }
+
+    /**
+     * Start the render loop.
+     */
+    private startRenderLoop(): void {
+        const render = () => {
+            this.render();
+            this.animationFrame = requestAnimationFrame(render);
+        };
+        render();
+    }
+
+    /**
+     * Main render function.
+     */
+    private render(): void {
+        const rect = this.canvasEl.getBoundingClientRect();
+        this.ctx.clearRect(0, 0, rect.width, rect.height);
+        
+        this.ctx.save();
+        this.ctx.translate(this.viewOffset.x, this.viewOffset.y);
+        this.ctx.scale(this.zoom, this.zoom);
+        
+        // Render edges first
+        this.renderEdges();
+        
+        // Render nodes
+        this.renderNodes();
+        
+        // Render labels
+        this.renderLabels();
+        
+        // Render selection/hover effects
+        this.renderInteractionEffects();
+        
+        this.ctx.restore();
+        
+        // Render UI overlays
+        this.renderOverlays();
+    }
+
+    /**
+     * Render graph edges.
+     */
+    private renderEdges(): void {
+        for (const edge of this.edges) {
+            const sourceNode = this.nodes.get(edge.source);
+            const targetNode = this.nodes.get(edge.target);
+            
+            if (!sourceNode || !targetNode) continue;
+            
+            this.ctx.save();
+            this.ctx.globalAlpha = edge.opacity;
+            this.ctx.strokeStyle = edge.color;
+            this.ctx.lineWidth = edge.weight * 2;
+            
+            // Different line styles for different edge types
+            if (edge.type === 'semantic') {
+                this.ctx.setLineDash([5, 5]);
+            } else if (edge.type === 'temporal') {
+                this.ctx.setLineDash([10, 2, 2, 2]);
+            }
+            
+            this.ctx.beginPath();
+            this.ctx.moveTo(sourceNode.x, sourceNode.y);
+            this.ctx.lineTo(targetNode.x, targetNode.y);
+            this.ctx.stroke();
+            
+            this.ctx.restore();
+        }
+    }
+
+    /**
+     * Render graph nodes.
+     */
+    private renderNodes(): void {
+        for (const [nodeId, node] of this.nodes) {
+            this.ctx.save();
+            
+            // Highlight selected/hovered nodes
+            if (nodeId === this.selectedNode) {
+                this.ctx.shadowColor = '#4A90E2';
+                this.ctx.shadowBlur = 10;
+            } else if (nodeId === this.hoveredNode) {
+                this.ctx.shadowColor = '#888';
+                this.ctx.shadowBlur = 5;
+            }
+            
+            // Node shape based on type
+            this.ctx.fillStyle = node.color;
+            this.ctx.beginPath();
+            
+            if (node.type === 'cluster') {
+                // Square for clusters
+                const size = node.size;
+                this.ctx.rect(node.x - size/2, node.y - size/2, size, size);
+            } else if (node.type === 'orphan') {
+                // Triangle for orphans
+                const size = node.size;
+                this.ctx.moveTo(node.x, node.y - size/2);
+                this.ctx.lineTo(node.x - size/2, node.y + size/2);
+                this.ctx.lineTo(node.x + size/2, node.y + size/2);
+                this.ctx.closePath();
+            } else {
+                // Circle for regular notes
+                this.ctx.arc(node.x, node.y, node.size, 0, 2 * Math.PI);
+            }
+            
+            this.ctx.fill();
+            
+            // Border for important nodes
+            if (node.importance > 0.7) {
+                this.ctx.strokeStyle = '#FFD700';
+                this.ctx.lineWidth = 2;
+                this.ctx.stroke();
+            }
+            
+            this.ctx.restore();
+        }
+    }
+
+    /**
+     * Render node labels.
+     */
+    private renderLabels(): void {
+        this.ctx.save();
+        this.ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        for (const [nodeId, node] of this.nodes) {
+            // Only show labels for selected, hovered, or important nodes
+            if (nodeId === this.selectedNode || nodeId === this.hoveredNode || node.importance > 0.8) {
+                this.ctx.fillStyle = 'var(--text-normal)';
+                this.ctx.fillText(
+                    node.label.length > 20 ? node.label.substring(0, 17) + '...' : node.label,
+                    node.x,
+                    node.y + node.size + 15
+                );
+            }
+        }
+        
+        this.ctx.restore();
+    }
+
+    /**
+     * Render interaction effects (selection, hover).
+     */
+    private renderInteractionEffects(): void {
+        if (this.selectedNode) {
+            const node = this.nodes.get(this.selectedNode);
+            if (node) {
+                // Highlight connected nodes
+                for (const edge of this.edges) {
+                    if (edge.source === this.selectedNode || edge.target === this.selectedNode) {
+                        const connectedNodeId = edge.source === this.selectedNode ? edge.target : edge.source;
+                        const connectedNode = this.nodes.get(connectedNodeId);
+                        
+                        if (connectedNode) {
+                            this.ctx.save();
+                            this.ctx.strokeStyle = '#4A90E2';
+                            this.ctx.lineWidth = 3;
+                            this.ctx.globalAlpha = 0.5;
+                            this.ctx.beginPath();
+                            this.ctx.arc(connectedNode.x, connectedNode.y, connectedNode.size + 5, 0, 2 * Math.PI);
+                            this.ctx.stroke();
+                            this.ctx.restore();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Render UI overlays (legends, stats).
+     */
+    private renderOverlays(): void {
+        // Graph statistics
+        const stats = this.containerEl.querySelector('.clippy-graph-stats') as HTMLElement ||
+                     this.containerEl.createEl('div', { cls: 'clippy-graph-stats' });
+        
+        const nodeCount = this.nodes.size;
+        const edgeCount = this.edges.length;
+        const semanticEdges = this.edges.filter(e => e.type === 'semantic').length;
+        
+        stats.innerHTML = `
+            <div>Nodes: ${nodeCount}</div>
+            <div>Connections: ${edgeCount}</div>
+            <div>AI Discovered: ${semanticEdges}</div>
+        `;
+        
+        if (!stats.parentElement) {
+            this.containerEl.appendChild(stats);
+        }
+    }
+
+    // Event handlers
+    private onMouseDown(e: MouseEvent): void {
+        const rect = this.canvasEl.getBoundingClientRect();
+        const x = (e.clientX - rect.left - this.viewOffset.x) / this.zoom;
+        const y = (e.clientY - rect.top - this.viewOffset.y) / this.zoom;
+        
+        const clickedNode = this.getNodeAt(x, y);
+        
+        if (clickedNode) {
+            this.isDragging = true;
+            this.dragNode = clickedNode;
+            this.selectedNode = clickedNode;
+        } else {
+            this.isDragging = true;
+            this.dragNode = null;
+            this.selectedNode = null;
+        }
+        
+        this.lastMousePos = { x: e.clientX, y: e.clientY };
+    }
+
+    private onMouseMove(e: MouseEvent): void {
+        const rect = this.canvasEl.getBoundingClientRect();
+        const x = (e.clientX - rect.left - this.viewOffset.x) / this.zoom;
+        const y = (e.clientY - rect.top - this.viewOffset.y) / this.zoom;
+        
+        if (this.isDragging) {
+            if (this.dragNode) {
+                const node = this.nodes.get(this.dragNode);
+                if (node) {
+                    node.x = x;
+                    node.y = y;
+                }
+            } else {
+                // Pan the view
+                this.viewOffset.x += e.clientX - this.lastMousePos.x;
+                this.viewOffset.y += e.clientY - this.lastMousePos.y;
+            }
+        } else {
+            // Update hover state
+            this.hoveredNode = this.getNodeAt(x, y);
+            this.canvasEl.style.cursor = this.hoveredNode ? 'pointer' : 'default';
+        }
+        
+        this.lastMousePos = { x: e.clientX, y: e.clientY };
+    }
+
+    private onMouseUp(): void {
+        this.isDragging = false;
+        this.dragNode = null;
+    }
+
+    private onWheel(e: WheelEvent): void {
+        e.preventDefault();
+        const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+        this.zoom = Math.max(0.1, Math.min(3, this.zoom * scaleFactor));
+    }
+
+    private onClick(e: MouseEvent): void {
+        if (this.selectedNode && !this.isDragging) {
+            // Open the selected note
+            const file = this.app.vault.getAbstractFileByPath(this.selectedNode);
+            if (file) {
+                this.app.workspace.openLinkText(this.selectedNode, '', false);
+            }
+        }
+    }
+
+    private onKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            this.selectedNode = null;
+        } else if (e.key === ' ') {
+            e.preventDefault();
+            this.centerGraph();
+        } else if (e.key === 'r') {
+            this.resetView();
+        }
+    }
+
+    // Helper methods
+    private getNodeAt(x: number, y: number): string | null {
+        for (const [nodeId, node] of this.nodes) {
+            const dx = x - node.x;
+            const dy = y - node.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance <= node.size) {
+                return nodeId;
+            }
+        }
+        return null;
+    }
+
+    private getNodeColor(node: any): string {
+        if (node.clusters.length > 0) {
+            // Color by cluster
+            const clusterColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF'];
+            const clusterIndex = node.clusters[0].charCodeAt(0) % clusterColors.length;
+            return clusterColors[clusterIndex];
+        } else if (node.backlinks.length === 0 && node.links.length === 0) {
+            return '#FFA07A'; // Orange for orphans
+        } else {
+            return '#4A90E2'; // Blue for regular notes
+        }
+    }
+
+    private getNodeType(node: any): 'note' | 'cluster' | 'orphan' {
+        if (node.backlinks.length === 0 && node.links.length === 0) {
+            return 'orphan';
+        } else if (node.clusters.length > 0) {
+            return 'cluster';
+        } else {
+            return 'note';
+        }
+    }
+
+    private getEdgeColor(type: string): string {
+        const colors = {
+            explicit: '#333333',
+            semantic: '#4A90E2',
+            temporal: '#FF6B6B',
+            causal: '#4ECDC4',
+            hierarchical: '#96CEB4'
+        };
+        return colors[type] || '#666666';
+    }
+
+    private shouldShowEdge(edge: any): boolean {
+        if (edge.type === 'semantic' && !this.filters.showSemanticEdges) {
+            return false;
+        }
+        return edge.confidence >= this.filters.minConfidence;
+    }
+
+    private createToggle(parent: HTMLElement, label: string, checked: boolean, onChange: (value: boolean) => void): void {
+        const toggleContainer = parent.createEl('label', { cls: 'clippy-toggle' });
+        const checkbox = toggleContainer.createEl('input', { type: 'checkbox' });
+        checkbox.checked = checked;
+        checkbox.addEventListener('change', () => onChange(checkbox.checked));
+        toggleContainer.createEl('span', { text: label });
+    }
+
+    private resetView(): void {
+        this.viewOffset = { x: 0, y: 0 };
+        this.zoom = 1.0;
+        this.selectedNode = null;
+    }
+
+    private centerGraph(): void {
+        const rect = this.canvasEl.getBoundingClientRect();
+        const nodes = Array.from(this.nodes.values());
+        
+        if (nodes.length === 0) return;
+        
+        // Calculate bounding box
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        for (const node of nodes) {
+            minX = Math.min(minX, node.x);
+            maxX = Math.max(maxX, node.x);
+            minY = Math.min(minY, node.y);
+            maxY = Math.max(maxY, node.y);
+        }
+        
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        this.viewOffset.x = rect.width / 2 - centerX * this.zoom;
+        this.viewOffset.y = rect.height / 2 - centerY * this.zoom;
+    }
+
+    private resizeCanvas(): void {
+        if (!this.canvasEl) return;
+        
+        const rect = this.containerEl.getBoundingClientRect();
+        this.canvasEl.style.width = '100%';
+        this.canvasEl.style.height = '400px';
+    }
+
+    private updateGraphDisplay(): void {
+        // Refilter and redraw
+        this.loadGraphData();
+    }
+}

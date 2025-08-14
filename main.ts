@@ -3,7 +3,17 @@
  * This file exports the main plugin class for Obsidian
  */
 
-import { Plugin, Notice, MarkdownView, Setting, PluginSettingTab, App, Editor, Modal, ButtonComponent } from 'obsidian';
+import { Plugin, Notice, MarkdownView, Setting, PluginSettingTab, App, Editor, Modal, ButtonComponent, WorkspaceLeaf, ItemView } from 'obsidian';
+
+// Import Phase 2 components
+import { LinkSuggestionEngine } from './src/link-suggestions/suggestion-engine';
+import { KnowledgeGraphManager } from './src/knowledge-graph/graph-manager';
+import { OrphanDetector } from './src/discovery/orphan-detector';
+import { SuggestionPanel } from './src/ui/suggestion-panel';
+import { OrphanManagementModal } from './src/ui/orphan-management-modal';
+// import { EnhancedGraphView } from './src/ui/enhanced-graph-view';
+import { EmbeddingManager } from './src/semantic/embedding-manager';
+import { SimilarityEngine } from './src/semantic/similarity-engine';
 
 // Settings interface
 interface ClippySettings {
@@ -13,6 +23,12 @@ interface ClippySettings {
   openaiKey: string;
   anthropicKey: string;
   featuresEnabled: boolean;
+  // Phase 2 settings
+  intelligentLinksEnabled: boolean;
+  semanticAnalysisEnabled: boolean;
+  orphanDetectionEnabled: boolean;
+  graphEnhancementsEnabled: boolean;
+  suggestionConfidenceThreshold: number;
 }
 
 const DEFAULT_SETTINGS: ClippySettings = {
@@ -21,7 +37,13 @@ const DEFAULT_SETTINGS: ClippySettings = {
   ollamaModel: 'llama3.2',
   openaiKey: '',
   anthropicKey: '',
-  featuresEnabled: true
+  featuresEnabled: true,
+  // Phase 2 defaults
+  intelligentLinksEnabled: true,
+  semanticAnalysisEnabled: true,
+  orphanDetectionEnabled: true,
+  graphEnhancementsEnabled: true,
+  suggestionConfidenceThreshold: 0.7
 };
 
 // Settings tab
@@ -80,6 +102,61 @@ class ClippySettingsTab extends PluginSettingTab {
         .setValue(this.plugin.settings.featuresEnabled)
         .onChange(async (value) => {
           this.plugin.settings.featuresEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+
+    // Phase 2 Settings Section
+    containerEl.createEl('h3', { text: 'Phase 2: Intelligent Features' });
+    
+    new Setting(containerEl)
+      .setName('Intelligent Link Suggestions')
+      .setDesc('Enable AI-powered link recommendations')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.intelligentLinksEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.intelligentLinksEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+    
+    new Setting(containerEl)
+      .setName('Semantic Analysis')
+      .setDesc('Enable content similarity analysis')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.semanticAnalysisEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.semanticAnalysisEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+    
+    new Setting(containerEl)
+      .setName('Orphan Detection')
+      .setDesc('Find and suggest connections for isolated notes')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.orphanDetectionEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.orphanDetectionEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+    
+    new Setting(containerEl)
+      .setName('Enhanced Graph View')
+      .setDesc('Show semantic connections in graph view')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.graphEnhancementsEnabled)
+        .onChange(async (value) => {
+          this.plugin.settings.graphEnhancementsEnabled = value;
+          await this.plugin.saveSettings();
+        }));
+    
+    new Setting(containerEl)
+      .setName('Suggestion Confidence Threshold')
+      .setDesc('Minimum confidence for showing suggestions (0.1-1.0)')
+      .addSlider(slider => slider
+        .setLimits(0.1, 1.0, 0.1)
+        .setValue(this.plugin.settings.suggestionConfidenceThreshold)
+        .setDynamicTooltip()
+        .onChange(async (value) => {
+          this.plugin.settings.suggestionConfidenceThreshold = value;
           await this.plugin.saveSettings();
         }));
   }
@@ -387,9 +464,78 @@ class TaggingModal extends Modal {
   }
 }
 
+// CLIPPY Insights View for sidebar
+class ClippyInsightsView extends ItemView {
+  private suggestionPanel: SuggestionPanel;
+  private plugin: ClippyPlugin;
+
+  constructor(leaf: WorkspaceLeaf, plugin: ClippyPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string {
+    return 'clippy-insights';
+  }
+
+  getDisplayText(): string {
+    return 'CLIPPY Insights';
+  }
+
+  getIcon(): string {
+    return 'sparkles';
+  }
+
+  async onOpen() {
+    const container = this.containerEl.children[1];
+    container.empty();
+    
+    // Initialize Phase 2 components
+    const graphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache);
+    const orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache);
+    const embeddingManager = new EmbeddingManager(this.plugin.settings.ollamaUrl);
+    const similarityEngine = new SimilarityEngine(embeddingManager);
+    const suggestionSettings = {
+      realTimeEnabled: true,
+      minConfidence: 0.7,
+      maxSuggestions: 5,
+      triggers: ['typing', 'paragraph', 'query'] as any,
+      showInline: true,
+      showSidebar: true,
+      autoLinkThreshold: 0.9
+    };
+    const suggestionEngine = new LinkSuggestionEngine(embeddingManager, similarityEngine, suggestionSettings, this.app.vault, this.app.metadataCache);
+    
+    this.suggestionPanel = new SuggestionPanel(
+      container as HTMLElement,
+      suggestionEngine,
+      graphManager,
+      orphanDetector,
+      this.app,
+      embeddingManager,
+      similarityEngine
+    );
+    
+    this.suggestionPanel.load();
+  }
+
+  async onClose() {
+    if (this.suggestionPanel) {
+      this.suggestionPanel.unload();
+    }
+  }
+}
+
 // Main plugin class
 export default class ClippyPlugin extends Plugin {
   settings: ClippySettings;
+  
+  // Phase 2 components
+  private embeddingManager: EmbeddingManager;
+  private similarityEngine: SimilarityEngine;
+  private suggestionEngine: LinkSuggestionEngine;
+  private graphManager: KnowledgeGraphManager;
+  private orphanDetector: OrphanDetector;
 
   async onload() {
     console.log('CLIPPY AI Assistant: Plugin loaded successfully');
@@ -397,8 +543,17 @@ export default class ClippyPlugin extends Plugin {
     // Load settings
     await this.loadSettings();
     
+    // Initialize Phase 2 components
+    await this.initializePhase2Components();
+    
     // Add settings tab
     this.addSettingTab(new ClippySettingsTab(this.app, this));
+    
+    // Register CLIPPY Insights view
+    this.registerView(
+      'clippy-insights',
+      (leaf: WorkspaceLeaf) => new ClippyInsightsView(leaf, this)
+    );
     
     // Add test command
     this.addCommand({
@@ -471,6 +626,51 @@ export default class ClippyPlugin extends Plugin {
       }
     });
 
+    // Phase 2 Commands
+    this.addCommand({
+      id: 'clippy-show-insights',
+      name: 'Show CLIPPY Insights Panel',
+      callback: async () => {
+        await this.activateInsightsView();
+      }
+    });
+    
+    this.addCommand({
+      id: 'clippy-find-orphans',
+      name: 'Find Orphaned Notes',
+      callback: async () => {
+        if (!this.settings.orphanDetectionEnabled) {
+          new Notice('🤖 Orphan detection is disabled. Enable in settings.');
+          return;
+        }
+        await this.findAndShowOrphans();
+      }
+    });
+    
+    this.addCommand({
+      id: 'clippy-build-knowledge-graph',
+      name: 'Build Knowledge Graph',
+      callback: async () => {
+        if (!this.settings.semanticAnalysisEnabled) {
+          new Notice('🤖 Semantic analysis is disabled. Enable in settings.');
+          return;
+        }
+        await this.buildKnowledgeGraph();
+      }
+    });
+    
+    this.addCommand({
+      id: 'clippy-suggest-links',
+      name: 'Suggest Links for Current Note',
+      editorCallback: async (editor: Editor, view: MarkdownView) => {
+        if (!this.settings.intelligentLinksEnabled) {
+          new Notice('🤖 Intelligent links are disabled. Enable in settings.');
+          return;
+        }
+        await this.suggestLinksForCurrentNote(editor, view);
+      }
+    });
+
     // Add ribbon icon
     this.addRibbonIcon('sparkles', 'CLIPPY AI Assistant', async () => {
       if (this.settings.featuresEnabled) {
@@ -481,6 +681,121 @@ export default class ClippyPlugin extends Plugin {
     });
 
     new Notice('🤖 CLIPPY AI Assistant loaded successfully!', 3000);
+  }
+
+  // Phase 2 Initialization
+  private async initializePhase2Components(): Promise<void> {
+    try {
+      this.embeddingManager = new EmbeddingManager(this.settings.ollamaUrl);
+      this.similarityEngine = new SimilarityEngine(this.embeddingManager);
+      const suggestionSettings = {
+        realTimeEnabled: true,
+        minConfidence: 0.7,
+        maxSuggestions: 5,
+        triggers: ['typing', 'paragraph', 'query'] as any,
+        showInline: true,
+        showSidebar: true,
+        autoLinkThreshold: 0.9
+      };
+      this.suggestionEngine = new LinkSuggestionEngine(this.embeddingManager, this.similarityEngine, suggestionSettings, this.app.vault, this.app.metadataCache);
+      this.graphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache);
+      this.orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache);
+      
+      console.log('CLIPPY: Phase 2 components initialized');
+    } catch (error) {
+      console.error('CLIPPY: Failed to initialize Phase 2 components:', error);
+      new Notice('⚠️ Some CLIPPY features may not work properly');
+    }
+  }
+
+  // Phase 2 Command Handlers
+  private async activateInsightsView(): Promise<void> {
+    const { workspace } = this.app;
+    
+    let leaf: WorkspaceLeaf | null = null;
+    const leaves = workspace.getLeavesOfType('clippy-insights');
+    
+    if (leaves.length > 0) {
+      // Insights view already exists, focus it
+      leaf = leaves[0];
+    } else {
+      // Create new insights view in right sidebar
+      leaf = workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({ type: 'clippy-insights', active: true });
+      }
+    }
+    
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
+  }
+
+  private async findAndShowOrphans(): Promise<void> {
+    try {
+      // Open the comprehensive orphan management modal
+      const modal = new OrphanManagementModal(
+        this.app,
+        this.orphanDetector,
+        this.embeddingManager,
+        this.similarityEngine
+      );
+      modal.open();
+    } catch (error) {
+      new Notice(`❌ Error opening orphan management: ${error.message}`);
+    }
+  }
+
+  private async buildKnowledgeGraph(): Promise<void> {
+    try {
+      new Notice('🧠 Building knowledge graph... This may take a moment.');
+      await this.graphManager.buildGraph();
+      new Notice('✅ Knowledge graph built successfully!');
+    } catch (error) {
+      new Notice(`❌ Error building graph: ${error.message}`);
+    }
+  }
+
+  private async suggestLinksForCurrentNote(editor: Editor, view: MarkdownView): Promise<void> {
+    try {
+      const content = editor.getValue();
+      if (!content.trim()) {
+        new Notice('Note is empty - nothing to analyze!');
+        return;
+      }
+      
+      const suggestionContext = {
+        currentContent: content,
+        cursorPosition: 0,
+        currentParagraph: content.split('\n')[0] || '',
+        surroundingText: content.substring(0, 200),
+        existingLinks: []
+      };
+      const suggestions = await this.suggestionEngine.getSuggestionsForContext(
+        suggestionContext,
+        'query' as any
+      );
+      
+      if (suggestions.length === 0) {
+        new Notice('No link suggestions found for current note.');
+        return;
+      }
+      
+      // Filter by confidence threshold
+      const filteredSuggestions = suggestions.filter(
+        s => s.confidence >= this.settings.suggestionConfidenceThreshold * 100
+      );
+      
+      if (filteredSuggestions.length === 0) {
+        new Notice(`No high-confidence suggestions found (threshold: ${(this.settings.suggestionConfidenceThreshold * 100).toFixed(0)}%)`);
+        return;
+      }
+      
+      new Notice(`🔗 Found ${filteredSuggestions.length} link suggestions. Check CLIPPY Insights panel.`);
+      await this.activateInsightsView();
+    } catch (error) {
+      new Notice(`❌ Error generating suggestions: ${error.message}`);
+    }
   }
 
   async testConnection() {
@@ -809,5 +1124,10 @@ Response format (ONLY return this JSON, nothing else):
 
   onunload() {
     console.log('CLIPPY AI Assistant: Plugin unloaded');
+    
+    // Clean up Phase 2 components
+    if (this.embeddingManager) {
+      // Any cleanup needed for embedding manager
+    }
   }
 }

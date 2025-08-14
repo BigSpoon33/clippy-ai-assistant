@@ -1,11 +1,11 @@
 {
 	"id": "clippy-ai-assistant",
 	"name": "CLIPPY AI Assistant",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "AI-powered personal assistant with multi-provider support (Ollama, OpenAI, Anthropic) for intelligent note enhancement and automated tagging.",
+	"description": "AI-powered personal assistant with intelligent link suggestions, semantic analysis, orphan detection, and enhanced graph visualization. Supports Ollama, OpenAI, and Anthropic.",
 	"author": "Lars Ladewig",
-	"authorUrl": "https://github.com/larsladewig",
+	"authorUrl": "https://github.com/BigSpoon33",
 	"fundingUrl": "https://github.com/sponsors/larsladewig",
 	"isDesktopOnly": false,
 	"requiredApiVersion": "0.15.0"

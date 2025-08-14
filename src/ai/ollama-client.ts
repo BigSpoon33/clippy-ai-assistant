@@ -3,7 +3,7 @@
  * Local AI provider using OpenAI-compatible API at http://localhost:11434/v1
  */
 
-import { BaseAIProvider } from './provider-factory';
+import { BaseAIProvider } from './base-provider';
 import { ContentAnalysis } from '../types';
 
 interface OllamaConfig {
@@ -36,11 +36,11 @@ interface OllamaResponse {
 
 export class OllamaClient extends BaseAIProvider {
   name = 'Ollama';
-  private config: OllamaConfig;
+  protected config: OllamaConfig;
   private baseUrl: string;
 
   constructor(config: OllamaConfig) {
-    super();
+    super(config);
     this.config = config;
     // Ensure URL ends with /v1 for OpenAI compatibility
     this.baseUrl = config.baseUrl.endsWith('/v1') ? config.baseUrl : `${config.baseUrl}/v1`;
@@ -264,5 +264,31 @@ Focus on:
   async isModelAvailable(modelName: string): Promise<boolean> {
     const models = await this.getAvailableModels();
     return models.some(model => model === modelName || model.includes(modelName));
+  }
+
+  /**
+   * Validate the Ollama configuration
+   */
+  validateConfig(): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!this.config.baseUrl) {
+      errors.push('Ollama base URL is required');
+    } else {
+      try {
+        new URL(this.config.baseUrl);
+      } catch {
+        errors.push('Invalid Ollama base URL format');
+      }
+    }
+
+    if (!this.config.model) {
+      errors.push('Ollama model name is required');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
   }
 }

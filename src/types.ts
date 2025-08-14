@@ -34,6 +34,27 @@ export interface ClippySettings {
     dateFormat: string;
     templateFolder: string;
   };
+  research: {
+    searchEngine: {
+      provider: 'searxng' | 'tavily' | 'brave' | 'duckduckgo' | 'serpapi' | 'serper';
+      searxngUrl: string;
+      tavilyApiKey: string;
+      braveApiKey: string;
+      serpApiKey: string;
+      serperApiKey: string;
+    };
+    defaults: {
+      maxResults: number;
+      qualityThreshold: number;
+      outputFolder: string;
+      template: string;
+      showThinkingTags: boolean;
+    };
+    prompts: {
+      wisdomExtraction: string;
+      conceptExtraction: string;
+    };
+  };
 }
 
 // ===== AI PROVIDER ABSTRACTION =====
@@ -190,6 +211,63 @@ export const DEFAULT_SETTINGS: ClippySettings = {
     dateFormat: 'YYYY-MM-DD',
     templateFolder: '40 - Obsidian/Templates',
   },
+  research: {
+    searchEngine: {
+      provider: 'searxng',
+      searxngUrl: 'http://localhost:8088',
+      tavilyApiKey: '',
+      braveApiKey: '',
+      serpApiKey: '',
+      serperApiKey: '',
+    },
+    defaults: {
+      maxResults: 10,
+      qualityThreshold: 0.6,
+      outputFolder: 'Generated Research Notes',
+      template: 'research-standard',
+      showThinkingTags: false,
+    },
+    prompts: {
+      wisdomExtraction: `You are a research assistant extracting comprehensive information about "{{searchTerm}}".
+
+Please analyze all the following sources and extract the most important information:
+
+{{allContent}}
+
+Please extract and organize information into these categories:
+
+1. **Key Definitions**: Clear, concise definitions of "{{searchTerm}}" and related terms
+2. **Key Facts**: The most important factual information
+3. **Uses & Applications**: How "{{searchTerm}}" is used or applied
+4. **Warnings & Precautions**: Any safety concerns, side effects, or warnings
+5. **Research Findings**: Scientific studies, evidence, or research results
+6. **Related Concepts**: Connected ideas, similar topics, or related terms
+
+Format your response with clear headings and bullet points for each section.`,
+      conceptExtraction: `Based on the research findings about "{{searchTerm}}", extract and organize the key concepts:
+
+**Content to analyze:**
+{{content}}
+
+**Instructions:**
+1. Identify the 5 most important concepts related to {{searchTerm}}
+2. For each concept, provide a brief definition and its relationship to {{searchTerm}}
+3. Note any hierarchical relationships between concepts
+4. Highlight any contradictory or debated aspects
+
+**Format as:**
+## Key Concepts
+- **Concept Name**: Definition and relationship
+- **Concept Name**: Definition and relationship
+[etc.]
+
+## Relationships
+- Describe connections between concepts
+
+## Important Notes
+- Any warnings, contradictions, or areas of debate`
+    },
+  },
 };
 
 // ===== CONSTANTS =====
@@ -203,6 +281,7 @@ export const COMMANDS = {
   SUMMARIZE: 'clippy-summarize',
   CHAT_WITH_AI: 'clippy-chat',
   ANALYZE_VAULT: 'clippy-analyze-vault',
+  DISCOVER_BRIDGES: 'clippy-discover-bridges',
 } as const;
 
 export const AI_MODELS = {

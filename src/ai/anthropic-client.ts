@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { BaseAIProvider } from './provider-factory';
+import { BaseAIProvider } from './base-provider';
 import { ContentAnalysis } from '../types';
 
 interface AnthropicConfig {
@@ -15,11 +15,11 @@ interface AnthropicConfig {
 
 export class AnthropicClient extends BaseAIProvider {
   name = 'Anthropic';
-  private config: AnthropicConfig;
+  protected config: AnthropicConfig;
   private client: Anthropic;
 
   constructor(config: AnthropicConfig) {
-    super();
+    super(config);
     this.config = config;
     
     if (!config.apiKey) {
@@ -351,5 +351,27 @@ Always respond with valid JSON following the specified format exactly.`;
     } catch (error) {
       return { xmlParsing: false, longContext: false };
     }
+  }
+
+  /**
+   * Validate the Anthropic configuration
+   */
+  validateConfig(): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!this.config.apiKey) {
+      errors.push('Anthropic API key is required');
+    } else if (!this.config.apiKey.startsWith('sk-ant-')) {
+      errors.push('Invalid Anthropic API key format');
+    }
+
+    if (!this.config.model) {
+      errors.push('Anthropic model name is required');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
   }
 }

@@ -3,13 +3,20 @@
  * Command palette integration and user interaction handlers
  */
 
-import { Editor, MarkdownView, Notice, TFile } from 'obsidian';
+import { Editor, MarkdownView, Notice, TFile, Modal } from 'obsidian';
 import ClippyPlugin from '../main';
 import { COMMANDS } from '../types';
 import { ProviderFactory } from '../ai/provider-factory';
 import { ContentAnalyzer } from '../processors/content-analyzer';
 import { AIEnhancementModal } from './ai-chat-modal';
 import { TagSuggestionModal } from './tag-suggestion-modal';
+import { OrphanDetector } from '../discovery/orphan-detector';
+import { EmbeddingManager } from '../semantic/embedding-manager';
+import { SimilarityEngine } from '../semantic/similarity-engine';
+import { BridgeManager } from './bridge-manager';
+import { AutomatedNoteGenerator } from '../research/automated-note-generator';
+import { NoteStatusMonitor } from '../research/note-status-monitor';
+import { ComprehensiveResearchSystem } from '../research/comprehensive-research-system';
 
 export class CommandHandlers {
   private plugin: ClippyPlugin;
@@ -22,6 +29,7 @@ export class CommandHandlers {
    * Register all CLIPPY commands with Obsidian
    */
   registerCommands(): void {
+    console.log('CLIPPY: Registering commands...');
     // Enhance current note
     this.plugin.addCommand({
       id: COMMANDS.ENHANCE_NOTE,
@@ -86,6 +94,49 @@ export class CommandHandlers {
       icon: 'bar-chart',
       editorCallback: this.handleQuickInsights.bind(this),
     });
+
+    // Discover bridge opportunities
+    this.plugin.addCommand({
+      id: COMMANDS.DISCOVER_BRIDGES,
+      name: 'Discover bridge opportunities',
+      icon: 'link',
+      callback: this.handleDiscoverBridges.bind(this),
+    });
+
+    // Generate research notes from checklist
+    this.plugin.addCommand({
+      id: 'clippy-generate-research-notes',
+      name: 'Generate research notes from checklist',
+      icon: 'search',
+      callback: this.handleGenerateResearchNotes.bind(this),
+    });
+
+    // Mark research note as completed
+    this.plugin.addCommand({
+      id: 'clippy-mark-note-completed',
+      name: 'Mark research note as completed',
+      icon: 'check-circle',
+      editorCallback: this.handleMarkNoteCompleted.bind(this),
+    });
+
+    // Show research project dashboard
+    this.plugin.addCommand({
+      id: 'clippy-research-dashboard',
+      name: 'Show research project dashboard',
+      icon: 'bar-chart-2',
+      callback: this.handleShowResearchDashboard.bind(this),
+    });
+
+    // Comprehensive research system
+    this.plugin.addCommand({
+      id: 'clippy-comprehensive-research',
+      name: 'Comprehensive research with vault analysis and web search',
+      icon: 'microscope',
+      callback: this.handleComprehensiveResearch.bind(this),
+    });
+
+
+    console.log('CLIPPY: All commands registered successfully');
   }
 
   /**
@@ -464,8 +515,8 @@ export class CommandHandlers {
       let newFrontmatter;
       if (frontmatter.includes('tags:')) {
         // Replace existing tags
-        newFrontmatter = frontmatter.replace(/tags:\s*\[(.*?)\]/s, tagYaml)
-                                    .replace(/tags:\s*\n((?:\s*-\s*.+\n)*)/s, tagYaml);
+        newFrontmatter = frontmatter.replace(/tags:\s*\[(.*?)\]/g, tagYaml)
+                                    .replace(/tags:\s*\n((?:\s*-\s*.+\n)*)/g, tagYaml);
       } else {
         // Add tags to frontmatter
         newFrontmatter = frontmatter.replace('---', `tags:\n${allTags.map(tag => `  - ${tag}`).join('\n')}\n---`);
@@ -477,6 +528,757 @@ export class CommandHandlers {
       // Create new frontmatter
       const tagYaml = `---\ntags:\n${[...existingTags, ...newTags].map(tag => `  - ${tag}`).join('\n')}\n---\n\n`;
       editor.setValue(tagYaml + content);
+    }
+  }
+
+  /**
+   * Handle bridge discovery command
+   */
+  async handleDiscoverBridges(): Promise<void> {
+    try {
+      const notice = new Notice('🔍 Discovering bridge opportunities...', 0);
+
+      // Initialize components
+      const orphanDetector = new OrphanDetector(this.plugin.app.vault, this.plugin.app.metadataCache);
+      const embeddingManager = new EmbeddingManager();
+      const similarityEngine = new SimilarityEngine(embeddingManager);
+      const bridgeManager = new BridgeManager(this.plugin.app, orphanDetector, embeddingManager, similarityEngine);
+
+      // Get bridge opportunities
+      const bridges = await bridgeManager.getBridgeOpportunities();
+
+      notice.hide();
+
+      if (bridges.length === 0) {
+        new Notice('🎉 No significant bridge opportunities found! Your vault is well connected.');
+        return;
+      }
+
+      // Show bridge opportunities modal
+      const modal = new BridgeOpportunitiesModal(this.plugin.app, bridges, bridgeManager);
+      modal.open();
+
+    } catch (error) {
+      console.error('CLIPPY: Error discovering bridges:', error);
+      new Notice(`❌ Failed to discover bridges: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle automated research note generation.
+   */
+  async handleGenerateResearchNotes(): Promise<void> {
+    try {
+      // Show checklist input modal with updated settings
+      const modal = new ResearchChecklistModal(this.plugin.app, this.plugin.settings, async (checklist, options) => {
+        const generator = new AutomatedNoteGenerator(this.plugin.app);
+        
+        // Configure search engine based on settings
+        const searchConfig = this.plugin.settings.research.searchEngine;
+        await generator.generateNotesFromChecklist(checklist, {
+          ...options,
+          searxngUrl: searchConfig.searxngUrl,
+          tavilyApiKey: searchConfig.tavilyApiKey,
+          searchEngine: searchConfig.provider
+        });
+
+        // Start monitoring notes for completion
+        const statusMonitor = new NoteStatusMonitor(this.plugin.app, generator.getProjectTracker());
+        statusMonitor.startMonitoring();
+      });
+      modal.open();
+
+    } catch (error) {
+      console.error('CLIPPY: Error generating research notes:', error);
+      new Notice(`❌ Failed to generate research notes: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle marking research note as completed.
+   */
+  async handleMarkNoteCompleted(editor: Editor, view: MarkdownView): Promise<void> {
+    try {
+      const file = view.file;
+      if (!file) {
+        new Notice('❌ No active file');
+        return;
+      }
+
+      const generator = new AutomatedNoteGenerator(this.plugin.app);
+      const statusMonitor = new NoteStatusMonitor(this.plugin.app, generator.getProjectTracker());
+      
+      const success = await statusMonitor.markNoteCompleted(file.path);
+      if (success) {
+        console.log(`✅ Marked note as completed: ${file.path}`);
+      }
+
+    } catch (error) {
+      console.error('CLIPPY: Error marking note as completed:', error);
+      new Notice(`❌ Failed to mark note as completed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle showing research project dashboard.
+   */
+  async handleShowResearchDashboard(): Promise<void> {
+    try {
+      const generator = new AutomatedNoteGenerator(this.plugin.app);
+      const statusMonitor = new NoteStatusMonitor(this.plugin.app, generator.getProjectTracker());
+      
+      statusMonitor.showCompletionDashboard();
+
+    } catch (error) {
+      console.error('CLIPPY: Error showing research dashboard:', error);
+      new Notice(`❌ Failed to show research dashboard: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle comprehensive research system.
+   */
+  async handleComprehensiveResearch(): Promise<void> {
+    try {
+      // Show comprehensive research checklist modal
+      const modal = new ComprehensiveResearchModal(this.plugin.app, this.plugin.settings, async (checklist, options) => {
+        const researchSystem = new ComprehensiveResearchSystem(this.plugin.app, this.plugin);
+        
+        // Configure with settings
+        const searchConfig = this.plugin.settings.research.searchEngine;
+        const researchOptions = {
+          ...options,
+          searxngUrl: searchConfig.searxngUrl,
+          tavilyApiKey: searchConfig.tavilyApiKey,
+          searchEngine: searchConfig.provider,
+          outputFolder: options.outputFolder || this.plugin.settings.research.defaults.outputFolder
+        };
+
+        await researchSystem.processResearchChecklist(checklist, researchOptions);
+      });
+      modal.open();
+
+    } catch (error) {
+      console.error('CLIPPY: Error starting comprehensive research:', error);
+      new Notice(`❌ Failed to start comprehensive research: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Modal for inputting research checklist and options.
+ */
+class ResearchChecklistModal extends Modal {
+  private onSubmit: (checklist: any[], options: any) => Promise<void>;
+  private settings: any;
+
+  constructor(app: any, settings: any, onSubmit: (checklist: any[], options: any) => Promise<void>) {
+    super(app);
+    this.settings = settings;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('clippy-research-modal');
+
+    // Header
+    const header = contentEl.createEl('div', { cls: 'modal-header' });
+    header.createEl('h2', { text: '🔬 Generate Research Notes', cls: 'modal-title' });
+    header.createEl('p', { 
+      text: 'Enter a list of items to research (one per line)',
+      cls: 'modal-subtitle'
+    });
+
+    // Checklist input
+    const form = contentEl.createEl('form');
+    form.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // Example
+    const exampleEl = form.createEl('div', { cls: 'example-section' });
+    exampleEl.style.cssText = 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 16px;';
+    exampleEl.createEl('strong', { text: 'Example:' });
+    const exampleText = exampleEl.createEl('pre');
+    exampleText.style.cssText = 'margin: 8px 0 0 0; font-family: monospace; font-size: 12px;';
+    exampleText.textContent = `Turmeric
+Ginger
+Echinacea
+Ginkgo Biloba
+Ashwagandha`;
+
+    // Input textarea
+    const textareaEl = form.createEl('textarea', { 
+      placeholder: 'Enter items to research (one per line)...',
+      cls: 'research-checklist-input'
+    });
+    textareaEl.style.cssText = `
+      min-height: 200px;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 6px;
+      background: var(--background-primary);
+      color: var(--text-normal);
+      font-family: var(--font-monospace);
+      resize: vertical;
+    `;
+
+    // Options section
+    const optionsEl = form.createEl('div', { cls: 'options-section' });
+    optionsEl.createEl('h3', { text: 'Options' });
+
+    // Search options
+    const searchOptionsEl = optionsEl.createEl('div', { cls: 'option-group' });
+    
+    const webSearchCheck = searchOptionsEl.createEl('label');
+    webSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
+    const webSearchInput = webSearchCheck.createEl('input', { type: 'checkbox' });
+    webSearchInput.checked = true;
+    webSearchCheck.createEl('span', { text: 'Enable web search (SearXNG/Tavily)' });
+
+    const personalSearchCheck = searchOptionsEl.createEl('label');
+    personalSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
+    const personalSearchInput = personalSearchCheck.createEl('input', { type: 'checkbox' });
+    personalSearchInput.checked = true;
+    personalSearchCheck.createEl('span', { text: 'Search personal documents (PDFs, notes)' });
+
+    // Template selection
+    const templateEl = optionsEl.createEl('div', { cls: 'option-group' });
+    templateEl.createEl('label', { text: 'Note Template:' });
+    const templateSelect = templateEl.createEl('select');
+    templateSelect.style.cssText = 'width: 100%; padding: 6px; margin-top: 4px;';
+    
+    const templates = [
+      { value: 'research-standard', text: 'Research Standard (Comprehensive)' },
+      { value: 'herb-profile', text: 'Herb Profile (Botanical focus)' },
+      { value: 'medical', text: 'Medical Research (Health focus)' },
+      { value: 'simple', text: 'Simple (Minimal sections)' }
+    ];
+    
+    templates.forEach(template => {
+      const option = templateSelect.createEl('option', { 
+        value: template.value, 
+        text: template.text 
+      });
+      if (template.value === (this.settings.research?.defaults?.template || 'research-standard')) {
+        option.selected = true;
+      }
+    });
+
+    // Output folder
+    const folderEl = optionsEl.createEl('div', { cls: 'option-group' });
+    folderEl.createEl('label', { text: 'Output Folder:' });
+    const folderInput = folderEl.createEl('input', { 
+      type: 'text', 
+      value: this.settings.research?.defaults?.outputFolder || 'Generated Research Notes',
+      placeholder: 'Generated Research Notes'
+    });
+    folderInput.style.cssText = 'width: 100%; padding: 6px; margin-top: 4px;';
+
+    // Buttons
+    const buttonContainer = form.createEl('div', { cls: 'button-container' });
+    buttonContainer.style.cssText = 'display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;';
+
+    const cancelBtn = buttonContainer.createEl('button', { 
+      text: 'Cancel',
+      type: 'button'
+    });
+    cancelBtn.addEventListener('click', () => this.close());
+
+    const generateBtn = buttonContainer.createEl('button', { 
+      text: '🔬 Generate Research Notes',
+      type: 'submit',
+      cls: 'mod-cta'
+    });
+
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const checklistText = textareaEl.value.trim();
+      if (!checklistText) {
+        new Notice('Please enter items to research');
+        return;
+      }
+
+      // Parse checklist
+      const items = checklistText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(item => ({
+          name: item,
+          searchTerms: [item],
+          category: 'Research',
+          priority: 'medium' as const
+        }));
+
+      if (items.length === 0) {
+        new Notice('No valid items found');
+        return;
+      }
+
+      // Prepare options with defaults from settings
+      const defaults = this.settings.research?.defaults || {};
+      const options = {
+        enableWebSearch: webSearchInput.checked,
+        enablePersonalSearch: personalSearchInput.checked,
+        noteTemplate: templateSelect.value,
+        outputFolder: folderInput.value || defaults.outputFolder || 'Generated Research Notes',
+        maxWebResults: defaults.maxResults || 10,
+        maxSources: 15,
+        minQualityScore: defaults.qualityThreshold || 0.6,
+        minRelevanceScore: 0.5,
+        delayBetweenRequests: 2000 // 2 second delay
+      };
+
+      this.close();
+      
+      // Start generation
+      new Notice(`🔬 Starting research for ${items.length} items...`);
+      await this.onSubmit(items, options);
+    });
+  }
+}
+
+/**
+ * Modal for comprehensive research checklist input.
+ */
+class ComprehensiveResearchModal extends Modal {
+  private onSubmit: (checklist: any[], options: any) => Promise<void>;
+  private settings: any;
+
+  constructor(app: any, settings: any, onSubmit: (checklist: any[], options: any) => Promise<void>) {
+    super(app);
+    this.settings = settings;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('clippy-comprehensive-research-modal');
+
+    // Header
+    const header = contentEl.createEl('div', { cls: 'modal-header' });
+    header.createEl('h2', { text: '🔬 Comprehensive Research System', cls: 'modal-title' });
+    header.createEl('p', { 
+      text: 'Enter items to research. Each item will get a complete analysis with vault notes and web search.',
+      cls: 'modal-subtitle'
+    });
+
+    // Process explanation
+    const processEl = contentEl.createEl('div', { cls: 'process-explanation' });
+    processEl.style.cssText = 'background: var(--background-secondary); padding: 16px; border-radius: 8px; margin-bottom: 20px;';
+    processEl.createEl('h3', { text: '🔄 Research Process:' });
+    const processList = processEl.createEl('ol');
+    processList.style.cssText = 'margin: 8px 0 0 20px; font-size: 14px;';
+    
+    const steps = [
+      'Create blank research notes with comprehensive template',
+      'Find all vault notes containing exact words from checklist',
+      'Perform web search and save each result as a unique note',
+      'Extract wisdom from all sources using AI analysis',
+      'Update research notes with organized findings',
+      'Enhance notes using AI for final polish'
+    ];
+    
+    steps.forEach(step => {
+      const li = processList.createEl('li');
+      li.textContent = step;
+      li.style.marginBottom = '4px';
+    });
+
+    // Form
+    const form = contentEl.createEl('form');
+    form.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
+
+    // Checklist input
+    const textareaEl = form.createEl('textarea', { 
+      placeholder: 'Enter research topics (one per line)...\n\nExample:\nTurmeric\nGinger\nAshwagandha\nCurcumin benefits\nNatural anti-inflammatory herbs',
+      cls: 'comprehensive-research-input'
+    });
+    textareaEl.style.cssText = `
+      min-height: 200px;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 6px;
+      background: var(--background-primary);
+      color: var(--text-normal);
+      font-family: var(--font-monospace);
+      resize: vertical;
+    `;
+
+    // Options section
+    const optionsEl = form.createEl('div', { cls: 'options-section' });
+    optionsEl.createEl('h3', { text: 'Research Options' });
+
+    // Output folder
+    const folderEl = optionsEl.createEl('div', { cls: 'option-group' });
+    folderEl.createEl('label', { text: 'Research Output Folder:' });
+    const folderInput = folderEl.createEl('input', { 
+      type: 'text', 
+      value: this.settings.research?.defaults?.outputFolder || 'Comprehensive Research',
+      placeholder: 'Comprehensive Research'
+    });
+    folderInput.style.cssText = 'width: 100%; padding: 6px; margin-top: 4px;';
+
+    // Search options
+    const searchOptionsEl = optionsEl.createEl('div', { cls: 'option-group' });
+    
+    const webSearchCheck = searchOptionsEl.createEl('label');
+    webSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
+    const webSearchInput = webSearchCheck.createEl('input', { type: 'checkbox' });
+    webSearchInput.checked = true;
+    webSearchCheck.createEl('span', { text: 'Enable web search and save individual pages' });
+
+    const vaultSearchCheck = searchOptionsEl.createEl('label');
+    vaultSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
+    const vaultSearchInput = vaultSearchCheck.createEl('input', { type: 'checkbox' });
+    vaultSearchInput.checked = true;
+    vaultSearchCheck.createEl('span', { text: 'Search vault for notes with exact words' });
+
+    const aiEnhanceCheck = searchOptionsEl.createEl('label');
+    aiEnhanceCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
+    const aiEnhanceInput = aiEnhanceCheck.createEl('input', { type: 'checkbox' });
+    aiEnhanceInput.checked = true;
+    aiEnhanceCheck.createEl('span', { text: 'AI-enhance final notes' });
+
+    // Advanced options
+    const advancedEl = optionsEl.createEl('details');
+    advancedEl.createEl('summary', { text: 'Advanced Options' });
+    
+    const maxResultsEl = advancedEl.createEl('div', { cls: 'option-group' });
+    maxResultsEl.style.marginTop = '12px';
+    maxResultsEl.createEl('label', { text: 'Max web search results per item:' });
+    const maxResultsInput = maxResultsEl.createEl('input', { 
+      type: 'number', 
+      value: String(this.settings.research?.defaults?.maxResults || 10)
+    });
+    maxResultsInput.min = '5';
+    maxResultsInput.max = '20';
+    maxResultsInput.style.cssText = 'width: 100px; padding: 4px; margin-top: 4px;';
+
+    // Custom template option
+    const templateEl = advancedEl.createEl('div', { cls: 'option-group' });
+    templateEl.style.marginTop = '16px';
+    templateEl.createEl('label', { text: 'Custom Template (optional):' });
+    const templateHelp = templateEl.createEl('div', { cls: 'template-help' });
+    templateHelp.style.cssText = 'font-size: 12px; color: var(--text-muted); margin: 4px 0;';
+    templateHelp.innerHTML = `
+      <strong>Available variables:</strong> {{title}}, {{today}}, {{research.status}}, {{vault.references}}, {{web.sources}}, {{overview}}, {{definitions}}, {{facts}}, {{uses}}, {{warnings}}, {{research}}, {{concepts}}, {{sources}}, {{wisdom}}
+    `;
+    
+    const templateInput = templateEl.createEl('textarea', { 
+      placeholder: `Leave empty to use default template, or enter custom template with variables:
+
+---
+title: {{title}}
+created: {{today}}
+tags: [research, {{title}}]
+---
+
+# {{title}}
+
+## Research Status
+{{research.status}}
+
+## Overview
+{{overview}}
+
+## Vault Notes
+{{vault.references}}
+
+## Web Sources  
+{{web.sources}}
+
+## Key Information
+{{facts}}
+
+## Sources
+{{sources}}`,
+      cls: 'custom-template-input'
+    });
+    templateInput.style.cssText = `
+      width: 100%;
+      min-height: 150px;
+      padding: 8px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 4px;
+      background: var(--background-primary);
+      color: var(--text-normal);
+      font-family: var(--font-monospace);
+      font-size: 12px;
+      resize: vertical;
+      margin-top: 4px;
+    `;
+
+    // Add file selector for template
+    const templateControls = templateEl.createEl('div', { cls: 'template-controls' });
+    templateControls.style.cssText = 'display: flex; gap: 8px; margin-top: 8px; align-items: center;';
+    
+    const loadTemplateBtn = templateControls.createEl('button', {
+      text: '📁 Load Template from Vault',
+      type: 'button'
+    });
+    loadTemplateBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+    
+    const templateFileSpan = templateControls.createEl('span', { cls: 'template-file-name' });
+    templateFileSpan.style.cssText = 'font-size: 12px; color: var(--text-muted);';
+    
+    loadTemplateBtn.addEventListener('click', async () => {
+      const markdownFiles = this.app.vault.getMarkdownFiles();
+      const templateFiles = markdownFiles.filter(file => 
+        file.path.toLowerCase().includes('template') || 
+        file.path.toLowerCase().includes('40 - obsidian') ||
+        file.extension === 'md'
+      );
+      
+      // Create a simple file selection modal
+      const fileModal = new class extends Modal {
+        constructor(app: any) {
+          super(app);
+        }
+        
+        onOpen() {
+          const { contentEl } = this;
+          contentEl.empty();
+          contentEl.createEl('h3', { text: 'Select Template File' });
+          
+          const fileList = contentEl.createEl('div', { cls: 'template-file-list' });
+          fileList.style.cssText = 'max-height: 300px; overflow-y: auto; margin: 16px 0;';
+          
+          templateFiles.forEach(file => {
+            const fileItem = fileList.createEl('div', { cls: 'template-file-item' });
+            fileItem.style.cssText = `
+              padding: 8px 12px;
+              border: 1px solid var(--background-modifier-border);
+              border-radius: 4px;
+              margin-bottom: 4px;
+              cursor: pointer;
+              background: var(--background-secondary);
+            `;
+            
+            fileItem.textContent = file.path;
+            fileItem.addEventListener('click', async () => {
+              try {
+                const content = await this.app.vault.read(file);
+                templateInput.value = content;
+                templateFileSpan.textContent = `📝 ${file.basename}`;
+                new Notice(`✅ Loaded template: ${file.basename}`);
+                this.close();
+              } catch (error) {
+                new Notice(`❌ Failed to load template: ${error.message}`);
+              }
+            });
+          });
+          
+          if (templateFiles.length === 0) {
+            fileList.createEl('p', { 
+              text: 'No template files found. Create a .md file with "template" in the name.',
+              cls: 'text-muted'
+            });
+          }
+        }
+      }(this.app);
+      
+      fileModal.open();
+    });
+
+    // Buttons
+    const buttonContainer = form.createEl('div', { cls: 'button-container' });
+    buttonContainer.style.cssText = 'display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px;';
+
+    const cancelBtn = buttonContainer.createEl('button', { 
+      text: 'Cancel',
+      type: 'button'
+    });
+    cancelBtn.addEventListener('click', () => this.close());
+
+    const startBtn = buttonContainer.createEl('button', { 
+      text: '🔬 Start Comprehensive Research',
+      type: 'submit',
+      cls: 'mod-cta'
+    });
+
+    // Form submission
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const checklistText = textareaEl.value.trim();
+      if (!checklistText) {
+        new Notice('Please enter research topics');
+        return;
+      }
+
+      // Parse checklist
+      const items = checklistText.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map((item, index) => ({
+          id: `item-${index}`,
+          name: item,
+          completed: false
+        }));
+
+      if (items.length === 0) {
+        new Notice('No valid research topics found');
+        return;
+      }
+
+      // Prepare options
+      const customTemplate = templateInput.value.trim();
+      const options = {
+        outputFolder: folderInput.value || 'Comprehensive Research',
+        enableWebSearch: webSearchInput.checked,
+        enableVaultSearch: vaultSearchInput.checked,
+        enableAIEnhance: aiEnhanceInput.checked,
+        maxWebResults: parseInt(maxResultsInput.value) || 10,
+        customTemplate: customTemplate || null,
+        projectName: `Comprehensive Research: ${new Date().toLocaleDateString()}`,
+        projectDescription: `Systematic research with vault analysis and web search for ${items.length} topics`
+      };
+
+      this.close();
+      
+      // Start comprehensive research
+      new Notice(`🔬 Starting comprehensive research for ${items.length} topics...`);
+      await this.onSubmit(items, options);
+    });
+  }
+}
+
+/**
+ * Modal for displaying and implementing bridge opportunities
+ */
+class BridgeOpportunitiesModal extends Modal {
+  private bridges: any[];
+  private bridgeManager: BridgeManager;
+
+  constructor(app: any, bridges: any[], bridgeManager: BridgeManager) {
+    super(app);
+    this.bridges = bridges;
+    this.bridgeManager = bridgeManager;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('clippy-bridge-modal');
+
+    // Header
+    const header = contentEl.createEl('div', { cls: 'modal-header' });
+    header.createEl('h2', { text: '🌉 Bridge Opportunities', cls: 'modal-title' });
+    header.createEl('p', { 
+      text: `Found ${this.bridges.length} opportunities to improve your knowledge network`,
+      cls: 'modal-subtitle'
+    });
+
+    // Bridge list
+    const container = contentEl.createEl('div', { cls: 'bridge-list' });
+    
+    for (let i = 0; i < Math.min(this.bridges.length, 10); i++) {
+      const bridge = this.bridges[i];
+      this.renderBridgeItem(container, bridge);
+    }
+
+    // Footer
+    const footer = contentEl.createEl('div', { cls: 'modal-footer' });
+    footer.style.textAlign = 'center';
+    footer.style.marginTop = '20px';
+    
+    const closeBtn = footer.createEl('button', { text: 'Close' });
+    closeBtn.addEventListener('click', () => this.close());
+  }
+
+  private renderBridgeItem(container: HTMLElement, bridge: any): void {
+    const item = container.createEl('div', { cls: 'bridge-item' });
+    item.style.cssText = `
+      margin-bottom: 12px;
+      padding: 16px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 8px;
+      background: var(--background-secondary);
+    `;
+
+    // Header
+    const itemHeader = item.createEl('div', { cls: 'bridge-item-header' });
+    itemHeader.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    `;
+
+    const title = itemHeader.createEl('h3', { text: bridge.title });
+    title.style.margin = '0';
+
+    const confidence = itemHeader.createEl('span', { 
+      text: `${Math.round(bridge.confidence * 100)}%`,
+      cls: `confidence-${bridge.priority}`
+    });
+    confidence.style.cssText = `
+      background: var(--interactive-accent);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    `;
+
+    // Description
+    const description = item.createEl('p', { text: bridge.description });
+    description.style.cssText = `
+      margin: 8px 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    `;
+
+    // Action button
+    const actionBtn = item.createEl('button', { 
+      text: `Implement ${bridge.type.charAt(0).toUpperCase() + bridge.type.slice(1)} Bridge`,
+      cls: 'mod-cta'
+    });
+    actionBtn.style.marginTop = '8px';
+    
+    actionBtn.addEventListener('click', async () => {
+      const success = await this.implementBridge(bridge);
+      if (success) {
+        item.style.opacity = '0.6';
+        actionBtn.disabled = true;
+        actionBtn.textContent = '✅ Implemented';
+      }
+    });
+  }
+
+  private async implementBridge(bridge: any): Promise<boolean> {
+    try {
+      let success = false;
+      
+      switch (bridge.type) {
+        case 'auto':
+          success = await this.bridgeManager.implementAutoBridge(bridge);
+          break;
+        case 'tag':
+          success = await this.bridgeManager.implementTagBridge(bridge);
+          break;
+        case 'research':
+          success = await this.bridgeManager.implementResearchBridge(bridge);
+          break;
+        case 'index':
+          success = await this.bridgeManager.implementIndexBridge(bridge);
+          break;
+        default:
+          new Notice('❌ Unknown bridge type');
+          return false;
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('Error implementing bridge:', error);
+      new Notice(`❌ Failed to implement bridge: ${error.message}`);
+      return false;
     }
   }
 }

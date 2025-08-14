@@ -4,7 +4,7 @@
  */
 
 import OpenAI from 'openai';
-import { BaseAIProvider } from './provider-factory';
+import { BaseAIProvider } from './base-provider';
 import { ContentAnalysis } from '../types';
 
 interface OpenAIConfig {
@@ -15,11 +15,11 @@ interface OpenAIConfig {
 
 export class OpenAIClient extends BaseAIProvider {
   name = 'OpenAI';
-  private config: OpenAIConfig;
+  protected config: OpenAIConfig;
   private client: OpenAI;
 
   constructor(config: OpenAIConfig) {
-    super();
+    super(config);
     this.config = config;
     
     if (!config.apiKey) {
@@ -244,5 +244,27 @@ Always respond with valid JSON. Focus on actionable insights for note organizati
     return lastSentence > maxChars * 0.8 ? 
       truncated.slice(0, lastSentence + 1) : 
       truncated + '...';
+  }
+
+  /**
+   * Validate the OpenAI configuration
+   */
+  validateConfig(): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!this.config.apiKey) {
+      errors.push('OpenAI API key is required');
+    } else if (!this.config.apiKey.startsWith('sk-')) {
+      errors.push('Invalid OpenAI API key format');
+    }
+
+    if (!this.config.model) {
+      errors.push('OpenAI model name is required');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    };
   }
 }
