@@ -3,6 +3,350 @@
  * Comprehensive styling for all UI components
  */
 
+/* ===== VAULT AGENT CHAT STYLES ===== */
+.vault-agent-chat-modal {
+  width: 90vw;
+  max-width: 900px;
+  height: 80vh;
+  max-height: 700px;
+}
+
+.vault-agent-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+  max-height: 80vh;
+}
+
+.vault-agent-header {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 16px;
+}
+
+.vault-agent-title {
+  margin: 0 0 4px 0;
+  color: var(--text-accent);
+  font-size: 24px;
+}
+
+.vault-agent-subtitle {
+  margin: 0 0 8px 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.vault-agent-info {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.vault-agent-info span {
+  background: var(--background-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.vault-agent-chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.vault-agent-chat-history {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--background-secondary);
+  min-height: 350px;
+}
+
+.vault-agent-message {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  line-height: 1.5;
+}
+
+.vault-agent-user {
+  background: var(--interactive-accent);
+  color: white;
+  margin-left: 20%;
+}
+
+.vault-agent-assistant {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  margin-right: 20%;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.message-avatar {
+  font-size: 14px;
+}
+
+.message-author {
+  font-weight: 600;
+}
+
+.message-time {
+  margin-left: auto;
+}
+
+.message-content {
+  font-size: 14px;
+}
+
+.message-content p {
+  margin: 0 0 8px 0;
+}
+
+.message-content ul, .message-content ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.message-content code {
+  background: var(--background-secondary);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+}
+
+.message-content pre {
+  background: var(--background-secondary);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.vault-agent-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.vault-agent-input {
+  flex: 1 !important;
+  min-height: 60px !important;
+  max-height: 120px;
+  padding: 12px !important;
+  border: 1px solid var(--background-modifier-border) !important;
+  border-radius: 6px;
+  background: var(--background-primary) !important;
+  color: var(--text-normal) !important;
+  resize: none;
+  font-family: var(--font-default);
+  font-size: 14px !important;
+  box-sizing: border-box !important;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 100 !important;
+}
+
+.vault-agent-input:focus {
+  outline: 2px solid var(--interactive-accent) !important;
+  border-color: var(--interactive-accent) !important;
+}
+
+.vault-agent-send-btn {
+  padding: 12px 24px;
+  height: fit-content;
+  background: var(--interactive-accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+
+.vault-agent-send-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.vault-agent-send-btn:disabled {
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.vault-agent-tools {
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 16px;
+}
+
+.vault-agent-tools h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: var(--text-accent);
+}
+
+.vault-agent-tools-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-secondary);
+}
+
+.tool-category {
+  margin-bottom: 8px;
+}
+
+.tool-category summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  color: var(--text-accent);
+  user-select: none;
+}
+
+.tool-category summary:hover {
+  opacity: 0.8;
+}
+
+.tool-item {
+  padding: 4px 8px;
+  margin: 2px 0;
+  font-size: 12px;
+  background: var(--background-primary);
+  border-radius: 4px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.tool-item strong {
+  color: var(--text-accent);
+}
+
+.tool-item em {
+  color: var(--text-muted);
+}
+
+.vault-agent-status {
+  padding: 8px 12px;
+  background: var(--background-modifier-border);
+  border-radius: 6px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Voice Controls Styling */
+.voice-controls-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+  padding: 12px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.voice-mode-toggle {
+  padding: 8px 16px !important;
+  background: var(--interactive-accent) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 6px;
+  cursor: pointer !important;
+  font-weight: 600;
+  transition: opacity 0.2s;
+  font-size: 14px;
+}
+
+.voice-mode-toggle:hover {
+  opacity: 0.8;
+}
+
+.voice-mode-toggle:disabled {
+  background: var(--background-modifier-border) !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed !important;
+  opacity: 0.5;
+}
+
+.push-to-talk-btn {
+  padding: 8px 16px !important;
+  background: var(--background-modifier-border) !important;
+  color: var(--text-muted) !important;
+  border: none !important;
+  border-radius: 6px;
+  cursor: not-allowed !important;
+  font-weight: 600;
+  transition: background-color 0.2s;
+  font-size: 14px;
+  user-select: none;
+}
+
+.push-to-talk-btn:not(:disabled) {
+  background: var(--interactive-accent-hover) !important;
+  color: white !important;
+  cursor: pointer !important;
+}
+
+.push-to-talk-btn:not(:disabled):hover {
+  background: var(--interactive-accent) !important;
+}
+
+.push-to-talk-btn:not(:disabled):active {
+  background: var(--text-error) !important;
+  transform: scale(0.95);
+}
+
+.voice-status {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  min-width: 120px;
+  text-align: center;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.voice-status.active {
+  background: var(--interactive-accent);
+  color: white;
+}
+
+.voice-status.listening {
+  background: var(--text-warning);
+  color: var(--text-on-accent);
+}
+
+.voice-status.speaking {
+  background: var(--interactive-accent-hover);
+  color: white;
+}
+
+.voice-status.error {
+  background: var(--text-error);
+  color: white;
+}
+
 /* ===== GENERAL MODAL STYLES ===== */
 .modal.clippy-modal {
   --clippy-primary: #6366f1;
@@ -730,4 +1074,204 @@
 
 .theme-dark .clippy-selected-tag {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== VAULT AGENT SIDEBAR VIEW ===== */
+.vault-agent-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  gap: 12px;
+}
+
+.vault-agent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.vault-agent-header h3 {
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.vault-agent-tools-btn,
+.vault-agent-voice-btn {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.vault-agent-tools-btn:hover,
+.vault-agent-voice-btn:hover {
+  background: var(--interactive-hover);
+  border-color: var(--interactive-accent);
+}
+
+.vault-agent-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 4px 8px;
+  background: var(--background-secondary);
+  border-radius: 12px;
+}
+
+.vault-agent-chat-history {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--background-primary);
+  min-height: 200px;
+  max-height: 60vh;
+}
+
+.vault-agent-message {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+
+.vault-agent-message-user {
+  flex-direction: row-reverse;
+}
+
+.vault-agent-message .message-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.vault-agent-message-user .message-avatar {
+  background: var(--text-accent);
+}
+
+.vault-agent-message .message-content {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.vault-agent-message-user .message-content {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.vault-agent-message .message-content strong {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.vault-agent-message .message-content code {
+  background: var(--background-primary);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+}
+
+.vault-agent-input-area {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.vault-agent-input-area input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 14px;
+}
+
+.vault-agent-input-area input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.vault-agent-input-area input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.vault-agent-input-area button {
+  padding: 8px 16px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.vault-agent-input-area button:hover:not(:disabled) {
+  background: var(--interactive-accent-hover);
+}
+
+.vault-agent-input-area button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.vault-agent-voice-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.push-to-talk-btn {
+  padding: 12px 24px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.push-to-talk-btn:hover {
+  background: var(--interactive-accent-hover);
+  transform: translateY(-1px);
+}
+
+.push-to-talk-btn:active {
+  transform: translateY(0);
+}
+
+/* Dark mode adjustments for sidebar */
+.theme-dark .vault-agent-message .message-content {
+  border: 1px solid var(--background-modifier-border-hover);
+}
+
+.theme-dark .vault-agent-message .message-content code {
+  background: var(--background-modifier-border);
 }

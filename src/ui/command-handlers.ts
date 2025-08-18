@@ -17,6 +17,10 @@ import { BridgeManager } from './bridge-manager';
 import { AutomatedNoteGenerator } from '../research/automated-note-generator';
 import { NoteStatusMonitor } from '../research/note-status-monitor';
 import { ComprehensiveResearchSystem } from '../research/comprehensive-research-system';
+import { ClippyErrorBoundaries } from '../utils/error-boundaries';
+import { VaultAgentChatModal } from './vault-agent-chat';
+import { VoiceEnabledVaultChatModal } from './voice-vault-chat';
+import { VIEW_TYPE_VAULT_AGENT } from './vault-agent-sidebar-view';
 
 export class CommandHandlers {
   private plugin: ClippyPlugin;
@@ -135,6 +139,45 @@ export class CommandHandlers {
       callback: this.handleComprehensiveResearch.bind(this),
     });
 
+    
+    // Voice Assistant commands (Local Whisper + Piper TTS)
+    this.plugin.addCommand({
+      id: 'clippy-toggle-voice',
+      name: 'Toggle Voice Assistant',
+      icon: 'microphone',
+      callback: this.handleToggleVoice.bind(this),
+    });
+    
+    this.plugin.addCommand({
+      id: 'clippy-test-speak',
+      name: 'Test Voice - Speak',
+      icon: 'volume-2',
+      callback: this.handleTestSpeak.bind(this),
+    });
+    
+    this.plugin.addCommand({
+      id: 'clippy-test-listen',
+      name: 'Test Voice - Listen',
+      icon: 'ear',
+      callback: this.handleTestListen.bind(this),
+    });
+
+    // Vault Agent Chat
+    this.plugin.addCommand({
+      id: 'clippy-vault-agent-chat',
+      name: 'Open Vault Agent Chat',
+      icon: 'robot',
+      callback: this.handleVaultAgentChat.bind(this),
+    });
+
+    // Vault Agent Sidebar
+    this.plugin.addCommand({
+      id: 'clippy-vault-agent-sidebar',
+      name: 'Open Vault Agent Sidebar',
+      icon: 'sidebar-left',
+      callback: this.handleVaultAgentSidebar.bind(this),
+    });
+    
 
     console.log('CLIPPY: All commands registered successfully');
   }
@@ -157,13 +200,63 @@ export class CommandHandlers {
 
       const notice = new Notice('Analyzing note...', 0);
 
-      // Get AI provider and content analyzer
-      const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const vaultPatterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
+      // Get AI provider and content analyzer with error boundaries
+      const aiProvider = await ClippyErrorBoundaries.aiProviderOperation(
+        () => ProviderFactory.createProvider(this.plugin.settings),
+        'create AI provider for note enhancement',
+        { showUserNotice: true }
+      );
+      
+      const vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
+        () => this.plugin.vaultAnalyzer.analyzeVaultPatterns(),
+        'analyze vault patterns',
+        {
+          fallback: async () => ({
+            tagPatterns: [],
+            dateFormats: [],
+            cssClasses: [],
+            frontmatterSchemas: [],
+            wikilinkPatterns: []
+          }),
+          showUserNotice: false
+        }
+      );
+      
       const analyzer = new ContentAnalyzer(aiProvider, vaultPatterns);
 
-      // Perform comprehensive analysis
-      const analysis = await analyzer.analyzeNote(content, this.extractExistingTags(content));
+      // Perform comprehensive analysis with error boundary
+      const analysis = await ClippyErrorBoundaries.aiProviderOperation(
+        () => analyzer.analyzeNote(content, this.extractExistingTags(content)),
+        'analyze note content',
+        {
+          fallback: async () => ({
+            contentAnalysis: {
+              suggestedTags: [],
+              topics: [],
+              summary: 'Analysis unavailable - AI provider error',
+              relatedNotes: [],
+              formattingIssues: ['AI provider error - check your settings']
+            },
+            tagSuggestions: [],
+            formattingResult: {
+              originalContent: content,
+              enhancedContent: content,
+              suggestions: [{ 
+                type: 'format' as const,
+                priority: 'high' as const,
+                description: 'Content analysis failed - please check your AI provider settings',
+                before: '',
+                after: ''
+              }],
+              preservedElements: []
+            },
+            relatedNotes: [],
+            qualityScore: 0,
+            recommendations: ['Please check your AI provider settings']
+          }),
+          showUserNotice: true
+        }
+      );
 
       notice.hide();
 
@@ -204,13 +297,39 @@ export class CommandHandlers {
 
       const notice = new Notice('Generating tag suggestions...', 0);
 
-      // Get AI provider and generate suggestions
-      const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const vaultPatterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
+      // Get AI provider and generate suggestions with error boundaries
+      const aiProvider = await ClippyErrorBoundaries.aiProviderOperation(
+        () => ProviderFactory.createProvider(this.plugin.settings),
+        'create AI provider for tagging',
+        { showUserNotice: true }
+      );
+      
+      const vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
+        () => this.plugin.vaultAnalyzer.analyzeVaultPatterns(),
+        'analyze vault patterns for tagging',
+        {
+          fallback: async () => ({
+            tagPatterns: [],
+            dateFormats: [],
+            cssClasses: [],
+            frontmatterSchemas: [],
+            wikilinkPatterns: []
+          }),
+          showUserNotice: false
+        }
+      );
+      
       const autoTagger = new (await import('../processors/auto-tagger')).AutoTagger(aiProvider, vaultPatterns);
 
       const existingTags = this.extractExistingTags(content);
-      const suggestions = await autoTagger.suggestTags(content, existingTags);
+      const suggestions = await ClippyErrorBoundaries.aiProviderOperation(
+        () => autoTagger.suggestTags(content, existingTags),
+        'generate tag suggestions',
+        {
+          fallback: async () => [],
+          showUserNotice: true
+        }
+      );
 
       notice.hide();
 
@@ -254,10 +373,22 @@ export class CommandHandlers {
 
       const notice = new Notice('Generating summary...', 0);
 
-      const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const summary = await aiProvider.generateResponse(
-        `Please provide a concise summary of this note content:\n\n${content}`,
-        'Create a brief summary that captures the main points and key information.'
+      const aiProvider = await ClippyErrorBoundaries.aiProviderOperation(
+        () => ProviderFactory.createProvider(this.plugin.settings),
+        'create AI provider for summarization',
+        { showUserNotice: true }
+      );
+      
+      const summary = await ClippyErrorBoundaries.aiProviderOperation(
+        () => aiProvider.generateResponse(
+          `Please provide a concise summary of this note content:\n\n${content}`,
+          'Create a brief summary that captures the main points and key information.'
+        ),
+        'generate note summary',
+        {
+          fallback: async () => 'Summary unavailable - AI provider error. Please check your settings.',
+          showUserNotice: true
+        }
       );
 
       notice.hide();
@@ -317,8 +448,21 @@ export class CommandHandlers {
     try {
       const notice = new Notice('Analyzing vault patterns...', 0);
 
-      // Force fresh analysis
-      const patterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns(true);
+      // Force fresh analysis with error boundary
+      const patterns = await ClippyErrorBoundaries.aiProviderOperation(
+        () => this.plugin.vaultAnalyzer.analyzeVaultPatterns(true),
+        'analyze vault patterns',
+        {
+          fallback: async () => ({
+            tagPatterns: [],
+            dateFormats: [],
+            cssClasses: [],
+            frontmatterSchemas: [],
+            wikilinkPatterns: []
+          }),
+          showUserNotice: true
+        }
+      );
 
       notice.hide();
 
@@ -654,7 +798,21 @@ export class CommandHandlers {
           outputFolder: options.outputFolder || this.plugin.settings.research.defaults.outputFolder
         };
 
-        await researchSystem.processResearchChecklist(checklist, researchOptions);
+        // Show progress modal
+        const progressModal = new ProgressModal(this.plugin.app, `Comprehensive Research: ${checklist.length} items`);
+        progressModal.open();
+
+        try {
+          await researchSystem.processResearchChecklist(checklist, researchOptions, (progress) => {
+            progressModal.updateProgress(progress);
+          });
+          
+          progressModal.close();
+          new Notice(`🎉 Comprehensive research completed successfully!`);
+        } catch (error) {
+          progressModal.close();
+          throw error;
+        }
       });
       modal.open();
 
@@ -663,6 +821,134 @@ export class CommandHandlers {
       new Notice(`❌ Failed to start comprehensive research: ${error.message}`);
     }
   }
+
+  /**
+   * Handle toggle voice command
+   */
+  async handleToggleVoice(): Promise<void> {
+    try {
+      if (!this.plugin.voiceSystemV2) {
+        new Notice('❌ Voice System not initialized. Check console for errors.');
+        return;
+      }
+
+      await this.plugin.voiceSystemV2.toggleVoice();
+    } catch (error) {
+      console.error('CLIPPY Voice: Error toggling voice:', error);
+      new Notice(`❌ Voice toggle error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle test speak command
+   */
+  async handleTestSpeak(): Promise<void> {
+    try {
+      if (!this.plugin.voiceSystemV2) {
+        new Notice('❌ Voice System not initialized');
+        return;
+      }
+
+      new Notice('🔊 Testing Voice - Text-to-Speech...');
+      const success = await this.plugin.voiceSystemV2.speak('Hello! This is CLIPPY Voice System. The local voice system is working properly.');
+      
+      if (success) {
+        new Notice('✅ Voice TTS test completed');
+      } else {
+        new Notice('❌ Voice TTS test failed');
+      }
+    } catch (error) {
+      console.error('CLIPPY Voice: Error testing TTS:', error);
+      new Notice(`❌ Voice TTS test failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle test listen command
+   */
+  async handleTestListen(): Promise<void> {
+    try {
+      if (!this.plugin.voiceSystemV2) {
+        new Notice('❌ Voice System not initialized');
+        return;
+      }
+
+      new Notice('🎤 Testing Voice - Speech-to-Text (5 seconds)...');
+      const result = await this.plugin.voiceSystemV2.listen(5);
+      
+      if (result) {
+        new Notice(`✅ Voice STT result: "${result}"`);
+      } else {
+        new Notice('❌ Voice STT test - no speech detected');
+      }
+    } catch (error) {
+      console.error('CLIPPY Voice: Error testing STT:', error);
+      new Notice(`❌ Voice STT test failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle vault agent chat command
+   */
+  async handleVaultAgentChat(): Promise<void> {
+    try {
+      // Get current file context if available
+      const activeView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+      
+      const context = { 
+        currentNote: activeView?.file || undefined,
+        workingDirectory: activeView?.file?.parent?.path || 'root',
+        conversationHistory: [],
+        sessionId: Date.now().toString()
+      };
+
+      // Open voice-enabled vault agent chat modal
+      const modal = new VoiceEnabledVaultChatModal(
+        this.plugin.app,
+        this.plugin.settings,
+        context
+      );
+      modal.open();
+
+    } catch (error) {
+      console.error('CLIPPY: Error opening vault agent chat:', error);
+      new Notice(`Failed to open vault agent: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle vault agent sidebar command
+   */
+  async handleVaultAgentSidebar(): Promise<void> {
+    try {
+      // Check if sidebar view is already open
+      const existingLeaf = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_VAULT_AGENT).first();
+      
+      if (existingLeaf) {
+        // Reveal existing sidebar
+        this.plugin.app.workspace.revealLeaf(existingLeaf);
+        return;
+      }
+
+      // Open new sidebar view
+      const leaf = this.plugin.app.workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: VIEW_TYPE_VAULT_AGENT,
+          active: true
+        });
+        
+        // Reveal the sidebar
+        this.plugin.app.workspace.revealLeaf(leaf);
+        new Notice('🤖 Vault Agent sidebar opened');
+      }
+
+    } catch (error) {
+      console.error('CLIPPY: Error opening vault agent sidebar:', error);
+      new Notice(`Failed to open vault agent sidebar: ${error.message}`);
+    }
+  }
+
 }
 
 /**
@@ -1280,5 +1566,119 @@ class BridgeOpportunitiesModal extends Modal {
       new Notice(`❌ Failed to implement bridge: ${error.message}`);
       return false;
     }
+  }
+}
+
+/**
+ * Modal for displaying progress during long operations
+ */
+class ProgressModal extends Modal {
+  private progressBar: HTMLElement;
+  private progressText: HTMLElement;
+  private messageText: HTMLElement;
+  private taskTitle: string;
+  private currentProgress: { current: number; total: number; percentage: number; message: string } | null = null;
+
+  constructor(app: any, taskTitle: string) {
+    super(app);
+    this.taskTitle = taskTitle;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('clippy-progress-modal');
+
+    // Header
+    const header = contentEl.createEl('div', { cls: 'modal-header' });
+    header.createEl('h2', { text: this.taskTitle, cls: 'modal-title' });
+
+    // Progress container
+    const progressContainer = contentEl.createEl('div', { cls: 'progress-container' });
+    progressContainer.style.cssText = 'margin: 20px 0; padding: 16px;';
+
+    // Progress bar background
+    const progressBg = progressContainer.createEl('div', { cls: 'progress-background' });
+    progressBg.style.cssText = `
+      width: 100%;
+      height: 20px;
+      background: var(--background-modifier-border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    `;
+
+    // Progress bar fill
+    this.progressBar = progressBg.createEl('div', { cls: 'progress-fill' });
+    this.progressBar.style.cssText = `
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--interactive-accent), var(--interactive-accent-hover));
+      border-radius: 10px;
+      transition: width 0.3s ease;
+    `;
+
+    // Progress text
+    this.progressText = progressContainer.createEl('div', { cls: 'progress-text' });
+    this.progressText.style.cssText = `
+      text-align: center;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--text-normal);
+    `;
+    this.progressText.textContent = '0%';
+
+    // Message text
+    this.messageText = progressContainer.createEl('div', { cls: 'progress-message' });
+    this.messageText.style.cssText = `
+      text-align: center;
+      font-size: 14px;
+      color: var(--text-muted);
+      min-height: 20px;
+    `;
+    this.messageText.textContent = 'Initializing...';
+
+    // Make modal non-dismissible during progress
+    this.modalEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  updateProgress(progress: { current: number; total: number; percentage: number; message?: string }) {
+    this.currentProgress = {
+      current: progress.current,
+      total: progress.total,
+      percentage: progress.percentage,
+      message: progress.message || ''
+    };
+
+    // Update progress bar
+    this.progressBar.style.width = `${Math.min(100, Math.max(0, progress.percentage))}%`;
+
+    // Update progress text
+    this.progressText.textContent = `${Math.round(progress.percentage)}% (${progress.current}/${progress.total})`;
+
+    // Update message
+    if (progress.message) {
+      this.messageText.textContent = progress.message;
+    }
+
+    // Add completion styling when done
+    if (progress.percentage >= 100) {
+      this.progressBar.style.background = 'linear-gradient(90deg, #4caf50, #66bb6a)';
+      this.progressText.textContent = '✅ Completed!';
+      
+      // Auto-close after a brief delay
+      setTimeout(() => {
+        if (this.currentProgress && this.currentProgress.percentage >= 100) {
+          this.close();
+        }
+      }, 2000);
+    }
+  }
+
+  onClose() {
+    // Clean up any resources
+    this.currentProgress = null;
   }
 }

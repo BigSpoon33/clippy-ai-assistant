@@ -8,6 +8,18 @@ import { SubagentCoordinator } from '../agents/subagent-system';
 import { EmbeddingManager } from '../semantic/embedding-manager';
 import { SimilarityEngine } from '../semantic/similarity-engine';
 import { ValidationHelper, ChecklistItemSchema, ExtractedWisdomSchema } from '../schemas/research-schemas';
+import { AutoTagger, TagSuggestion } from '../processors/auto-tagger';
+import { 
+    processThinkingTags, 
+    sanitizeFileName, 
+    replacePlaceholder, 
+    extractFrontmatter,
+    replaceFrontmatter,
+    delay,
+    escapeRegex,
+    ProgressTracker 
+} from '../utils/shared-utilities';
+import { ClippyErrorBoundaries } from '../utils/error-boundaries';
 
 interface ChecklistItem {
     name: string;
@@ -51,6 +63,7 @@ export class ComprehensiveResearchSystem {
     private subagentCoordinator: SubagentCoordinator;
     private embeddingManager: EmbeddingManager;
     private similarityEngine: SimilarityEngine;
+    private autoTagger: AutoTagger;
 
     constructor(app: App, plugin?: any) {
         this.app = app;
@@ -67,6 +80,16 @@ export class ComprehensiveResearchSystem {
         
         if (plugin && plugin.aiProvider) {
             this.subagentCoordinator = new SubagentCoordinator(plugin.aiProvider, this.ragSystem, plugin);
+            
+            // Initialize AutoTagger for research note tagging
+            const vaultPatterns = plugin.vaultAnalyzer ? plugin.vaultAnalyzer.getPatterns() : {
+                tagPatterns: [],
+                dateFormats: [],
+                cssClasses: [],
+                frontmatterSchemas: [],
+                wikilinkPatterns: []
+            };
+            this.autoTagger = new AutoTagger(plugin.aiProvider, vaultPatterns);
         }
     }
 
@@ -75,7 +98,8 @@ export class ComprehensiveResearchSystem {
      */
     async processResearchChecklist(
         checklist: ChecklistItem[],
-        options: any = {}
+        options: any = {},
+        onProgress?: (progress: { current: number; total: number; percentage: number; message: string }) => void
     ): Promise<void> {
         // Configure WebSearchEngine with proper settings
         const searxngConfig = {
@@ -98,8 +122,37 @@ export class ComprehensiveResearchSystem {
 
         console.log(`🔬 Starting comprehensive research for ${checklist.length} items`);
 
+        // Initialize progress tracking
+        const totalSteps = checklist.length * 5 + 1; // Each item has 5 steps + initial setup
+        const progressTracker = new ProgressTracker(totalSteps);
+        
+        // Setup progress callback
+        progressTracker.onProgress((progress) => {
+            if (onProgress) {
+                onProgress({
+                    ...progress,
+                    message: `Research Progress: ${progress.current}/${progress.total} steps completed`
+                });
+            }
+        });
+
+        // Report initial progress
+        progressTracker.increment();
+        onProgress?.({
+            current: 1,
+            total: totalSteps,
+            percentage: (1 / totalSteps) * 100,
+            message: "Initializing comprehensive research system..."
+        });
+
         // Step 1: Create blank research notes with template for each item
-        const researchNotes = await this.createBlankResearchNotes(checklist, options);
+        onProgress?.({
+            current: 1,
+            total: totalSteps,
+            percentage: (1 / totalSteps) * 100,
+            message: "Creating blank research notes..."
+        });
+        const researchNotes = await this.createBlankResearchNotes(checklist, options, progressTracker, onProgress);
 
         // Step 2: Process each unchecked item systematically
         for (let i = 0; i < checklist.length; i++) {
@@ -108,20 +161,42 @@ export class ComprehensiveResearchSystem {
             if (!item.completed) {
                 console.log(`\n📋 Processing unchecked item: ${item.name}`);
                 
+                onProgress?.({
+                    current: 1 + (i * 5) + 1,
+                    total: totalSteps,
+                    percentage: ((1 + (i * 5) + 1) / totalSteps) * 100,
+                    message: `Processing item ${i + 1}/${checklist.length}: ${item.name}`
+                });
+                
                 const itemId = `${projectId}-item-${i}`;
                 await this.projectTracker.markItemProcessing(projectId, itemId);
 
                 try {
-                    await this.comprehensiveResearch(item, researchNotes[i], options);
+                    await this.comprehensiveResearch(item, researchNotes[i], options, progressTracker, onProgress, i);
                     
                     // Mark as completed
                     item.completed = true;
                     await this.projectTracker.markItemCompleted(projectId, itemId, researchNotes[i].path);
                     
                     console.log(`✅ Completed research for: ${item.name}`);
+                    
+                    onProgress?.({
+                        current: 1 + ((i + 1) * 5),
+                        total: totalSteps,
+                        percentage: ((1 + ((i + 1) * 5)) / totalSteps) * 100,
+                        message: `✅ Completed ${i + 1}/${checklist.length}: ${item.name}`
+                    });
+                    
                 } catch (error) {
                     console.error(`❌ Failed research for ${item.name}:`, error);
                     await this.projectTracker.markItemFailed(projectId, itemId, error.message);
+                    
+                    onProgress?.({
+                        current: 1 + ((i + 1) * 5),
+                        total: totalSteps,
+                        percentage: ((1 + ((i + 1) * 5)) / totalSteps) * 100,
+                        message: `❌ Failed ${i + 1}/${checklist.length}: ${item.name}`
+                    });
                 }
 
                 // Rate limiting
@@ -137,7 +212,9 @@ export class ComprehensiveResearchSystem {
      */
     private async createBlankResearchNotes(
         checklist: ChecklistItem[],
-        options: any
+        options: any,
+        progressTracker?: ProgressTracker,
+        onProgress?: (progress: { current: number; total: number; percentage: number; message: string }) => void
     ): Promise<TFile[]> {
         const notes: TFile[] = [];
         const outputFolder = options.outputFolder || 'Generated Research Notes';
@@ -165,6 +242,11 @@ export class ComprehensiveResearchSystem {
                 item.researchNoteFile = file;
                 
                 console.log(`📝 Created blank research note: ${finalPath}`);
+                
+                // Update progress for each note created
+                if (progressTracker) {
+                    progressTracker.increment();
+                }
             } catch (error) {
                 console.error(`Error creating note for ${item.name}:`, error);
                 throw error;
@@ -180,31 +262,70 @@ export class ComprehensiveResearchSystem {
     private async comprehensiveResearch(
         item: ChecklistItem,
         noteFile: TFile,
-        options: any
+        options: any,
+        progressTracker?: ProgressTracker,
+        onProgress?: (progress: { current: number; total: number; percentage: number; message: string }) => void,
+        itemIndex?: number
     ): Promise<void> {
         console.log(`🔍 Starting comprehensive research for: ${item.name}`);
+        const baseProgress = itemIndex !== undefined ? 1 + (itemIndex * 5) : 0;
 
         // Step 2a: Search vault for notes containing exact words
+        onProgress?.({
+            current: baseProgress + 1,
+            total: progressTracker?.getProgress().total || 100,
+            percentage: ((baseProgress + 1) / (progressTracker?.getProgress().total || 100)) * 100,
+            message: `Searching vault for: ${item.name}`
+        });
         const vaultNotes = await this.findVaultNotesWithExactWords(item.name);
         console.log(`📚 Found ${vaultNotes.length} vault notes with exact words`);
+        progressTracker?.increment();
 
         // Step 2b: Perform web search and save each page as unique note
-        const webSearchNotes = await this.performWebSearchAndSavePages(item.name, options);
+        onProgress?.({
+            current: baseProgress + 2,
+            total: progressTracker?.getProgress().total || 100,
+            percentage: ((baseProgress + 2) / (progressTracker?.getProgress().total || 100)) * 100,
+            message: `Performing web search for: ${item.name}`
+        });
+        const webSearchNotes = await this.performWebSearchAndSavePages(item.name, options, onProgress);
         console.log(`🌐 Created ${webSearchNotes.length} web search notes`);
+        progressTracker?.increment();
 
         // Step 2c: Parse and extract wisdom from all sources
+        onProgress?.({
+            current: baseProgress + 3,
+            total: progressTracker?.getProgress().total || 100,
+            percentage: ((baseProgress + 3) / (progressTracker?.getProgress().total || 100)) * 100,
+            message: `Extracting wisdom from ${vaultNotes.length + webSearchNotes.length} sources`
+        });
         const extractedWisdom = await this.extractWisdomFromAllSources(
             item.name,
             vaultNotes,
             webSearchNotes,
             options
         );
+        progressTracker?.increment();
 
         // Step 2d: Update the research note with extracted wisdom
+        onProgress?.({
+            current: baseProgress + 4,
+            total: progressTracker?.getProgress().total || 100,
+            percentage: ((baseProgress + 4) / (progressTracker?.getProgress().total || 100)) * 100,
+            message: `Updating research note with AI-generated content`
+        });
         await this.updateResearchNoteWithWisdom(noteFile, item, extractedWisdom, vaultNotes, webSearchNotes);
+        progressTracker?.increment();
 
         // Step 2e: Enhance the note using AI
+        onProgress?.({
+            current: baseProgress + 5,
+            total: progressTracker?.getProgress().total || 100,
+            percentage: ((baseProgress + 5) / (progressTracker?.getProgress().total || 100)) * 100,
+            message: `Enhancing research note for: ${item.name}`
+        });
         await this.enhanceResearchNote(noteFile, options);
+        progressTracker?.increment();
 
         console.log(`✨ Comprehensive research completed for: ${item.name}`);
     }
@@ -354,7 +475,8 @@ tags:
      */
     private async performWebSearchAndSavePages(
         searchTerm: string,
-        options: any
+        options: any,
+        onProgress?: (progress: { current: number; total: number; percentage: number; message: string }) => void
     ): Promise<WebSearchNote[]> {
         const webSearchNotes: WebSearchNote[] = [];
         const webSearchFolder = `${options.outputFolder || 'Generated Research Notes'}/Web Search - ${this.sanitizeFileName(searchTerm)}`;
@@ -375,8 +497,14 @@ tags:
             for (let i = 0; i < searchResults.length; i++) {
                 const result = searchResults[i];
                 
+                // Show progress for each web result being saved
+                if (onProgress && searchResults.length > 5) {
+                    const progressMessage = `Saving web result ${i + 1}/${searchResults.length}: ${result.title}`;
+                    // Note: onProgress callback will use the current progress tracking context
+                }
+                
                 try {
-                    const fileName = this.sanitizeFileName(`${i + 1} - ${result.title}`);
+                    const fileName = sanitizeFileName(`${i + 1} - ${result.title}`);
                     const filePath = `${webSearchFolder}/${fileName}.md`;
                     
                     const noteContent = this.generateWebSearchNoteContent(result, searchTerm, i + 1);
@@ -392,6 +520,11 @@ tags:
                     });
                     
                     console.log(`💾 Saved web search note: ${fileName}`);
+                    
+                    // Small delay between saves to prevent overwhelming the system
+                    if (i < searchResults.length - 1) {
+                        await this.delay(500);
+                    }
                 } catch (error) {
                     console.warn(`Error saving web search result ${i + 1}:`, error);
                 }
@@ -1429,9 +1562,6 @@ Generate dosage:`;
         };
     }
 
-    private async delay(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
 
     // ==================== NEW RAG-ENHANCED METHODS ====================
 
@@ -1639,8 +1769,15 @@ Generate dosage:`;
     ): Promise<string> {
         let updatedContent = currentContent;
 
+        // Generate intelligent tags for the research note
+        const enhancedFrontmatter = await this.enhanceFrontmatterWithSmartTags(
+            frontmatterResponse, 
+            updatedContent, 
+            item.name
+        );
+        
         // Update frontmatter
-        updatedContent = this.replaceFrontmatter(updatedContent, frontmatterResponse);
+        updatedContent = this.replaceFrontmatter(updatedContent, enhancedFrontmatter);
 
         // Ensure mandatory sections are present
         updatedContent = this.ensureMandatorySections(updatedContent);
@@ -1704,48 +1841,183 @@ Generate dosage:`;
      * Remove <thinking> tags from AI responses based on settings.
      */
     private removeThinkingTags(content: string): string {
-        // Check if user wants to show thinking tags
         const showThinkingTags = this.plugin?.settings?.research?.defaults?.showThinkingTags || false;
-        
-        if (showThinkingTags) {
-            // Keep thinking tags but format them nicely
-            return content
-                .replace(/<thinking>/gi, '\n\n**🤔 AI Thinking Process:**\n> ')
-                .replace(/<\/thinking>/gi, '\n\n')
-                .replace(/\n\n+/g, '\n\n')
-                .trim();
-        } else {
-            // Remove thinking tags completely
-            return content
-                .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                .replace(/\n\n+/g, '\n\n')
-                .trim();
-        }
+        return processThinkingTags(content, { showThinkingTags });
     }
 
     /**
      * Extract current frontmatter from content.
      */
     private extractCurrentFrontmatter(content: string): string {
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        return frontmatterMatch ? frontmatterMatch[1] : '';
+        return extractFrontmatter(content).frontmatter;
     }
 
     /**
      * Remove existing frontmatter from content.
      */
     private removeExistingFrontmatter(content: string): string {
-        return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+        return extractFrontmatter(content).content;
     }
 
     /**
      * Replace frontmatter in content.
      */
     private replaceFrontmatter(content: string, newFrontmatter: string): string {
-        if (content.startsWith('---\n')) {
-            return content.replace(/^---\n[\s\S]*?\n---/, `---\n${newFrontmatter}\n---`);
-        } else {
-            return `---\n${newFrontmatter}\n---\n\n${content}`;
+        return replaceFrontmatter(content, newFrontmatter);
+    }
+
+    /**
+     * Enhance frontmatter with intelligent tags using AutoTagger.
+     */
+    private async enhanceFrontmatterWithSmartTags(
+        originalFrontmatter: string,
+        noteContent: string,
+        researchTopic: string
+    ): Promise<string> {
+        if (!this.autoTagger) {
+            console.log('AutoTagger not available, using original frontmatter');
+            return originalFrontmatter;
         }
+
+        try {
+            // Extract existing tags from frontmatter
+            const existingTags = this.extractTagsFromFrontmatter(originalFrontmatter);
+            
+            // Generate content for tag analysis (combine topic + note content)
+            const contentForAnalysis = `# ${researchTopic}\n\n${this.removeExistingFrontmatter(noteContent)}`;
+            
+            // Get AI-powered tag suggestions with error boundary
+            const tagSuggestions = await ClippyErrorBoundaries.aiProviderOperation(
+                () => this.autoTagger.suggestTags(contentForAnalysis, existingTags),
+                'generate smart tags',
+                {
+                    fallback: async () => {
+                        console.log('AutoTagger failed, returning empty suggestions');
+                        return [];
+                    },
+                    showUserNotice: false
+                }
+            );
+            
+            // Extract high-confidence tags (above 0.6 confidence)
+            const smartTags = tagSuggestions
+                .filter((suggestion: TagSuggestion) => suggestion.confidence > 0.6)
+                .map((suggestion: TagSuggestion) => suggestion.tag)
+                .slice(0, 5); // Limit to top 5 suggestions
+            
+            // Combine existing and smart tags
+            const allTags = [...new Set([...existingTags, ...smartTags])];
+            
+            // Update the frontmatter with enhanced tags
+            const enhancedFrontmatter = this.updateFrontmatterTags(originalFrontmatter, allTags);
+            
+            console.log(`🏷️ AutoTagger added ${smartTags.length} intelligent tags for "${researchTopic}": ${smartTags.join(', ')}`);
+            
+            return enhancedFrontmatter;
+            
+        } catch (error) {
+            console.error('Failed to enhance frontmatter with smart tags:', error);
+            return originalFrontmatter;
+        }
+    }
+
+    /**
+     * Extract tags from YAML frontmatter.
+     */
+    private extractTagsFromFrontmatter(frontmatter: string): string[] {
+        const tags: string[] = [];
+        const lines = frontmatter.split('\n');
+        
+        let inTagsSection = false;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            
+            if (trimmed.startsWith('tags:')) {
+                inTagsSection = true;
+                // Handle inline tags: tags: [tag1, tag2]
+                const inlineMatch = trimmed.match(/tags:\s*\[(.*?)\]/);
+                if (inlineMatch) {
+                    const inlineTags = inlineMatch[1]
+                        .split(',')
+                        .map(tag => tag.trim().replace(/["']/g, ''))
+                        .filter(tag => tag.length > 0);
+                    tags.push(...inlineTags);
+                    inTagsSection = false;
+                }
+            } else if (inTagsSection && trimmed.startsWith('- ')) {
+                // Handle YAML array format: - tag
+                const tag = trimmed.replace('- ', '').replace(/["']/g, '').trim();
+                if (tag.length > 0) {
+                    tags.push(tag);
+                }
+            } else if (inTagsSection && !trimmed.startsWith(' ') && !trimmed.startsWith('-')) {
+                // End of tags section
+                inTagsSection = false;
+            }
+        }
+        
+        return tags;
+    }
+
+    /**
+     * Update frontmatter with enhanced tags.
+     */
+    private updateFrontmatterTags(frontmatter: string, tags: string[]): string {
+        const lines = frontmatter.split('\n');
+        const updatedLines: string[] = [];
+        let tagsReplaced = false;
+        let inTagsSection = false;
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            
+            if (trimmed.startsWith('tags:')) {
+                // Replace tags section
+                if (tags.length > 0) {
+                    updatedLines.push('tags:');
+                    tags.forEach(tag => {
+                        updatedLines.push(`  - ${tag}`);
+                    });
+                } else {
+                    updatedLines.push('tags: []');
+                }
+                tagsReplaced = true;
+                inTagsSection = true;
+                
+                // Skip inline tags if present
+                if (!trimmed.match(/tags:\s*\[.*?\]/)) {
+                    continue;
+                }
+            } else if (inTagsSection && (trimmed.startsWith('- ') || trimmed.startsWith('  - '))) {
+                // Skip existing tag lines, they're already replaced
+                continue;
+            } else if (inTagsSection && !trimmed.startsWith(' ') && !trimmed.startsWith('-')) {
+                // End of tags section
+                inTagsSection = false;
+                updatedLines.push(line);
+            } else {
+                updatedLines.push(line);
+            }
+        }
+        
+        // If no tags section existed, add it after title
+        if (!tagsReplaced && tags.length > 0) {
+            const titleIndex = updatedLines.findIndex(line => line.trim().startsWith('title:'));
+            const insertIndex = titleIndex >= 0 ? titleIndex + 1 : 1;
+            
+            updatedLines.splice(insertIndex, 0, 'tags:');
+            tags.forEach(tag => {
+                updatedLines.splice(insertIndex + 1, 0, `  - ${tag}`);
+            });
+        }
+        
+        return updatedLines.join('\n');
+    }
+
+    /**
+     * Utility delay function
+     */
+    private async delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }

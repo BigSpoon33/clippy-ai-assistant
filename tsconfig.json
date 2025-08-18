@@ -4,7 +4,7 @@
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
-    "target": "ES6",
+    "target": "ES2020",
     "allowJs": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
@@ -13,12 +13,20 @@
     "strictNullChecks": true,
     "lib": [
       "DOM",
-      "ES5",
-      "ES6",
-      "ES7"
+      "ES2020"
     ]
   },
   "include": [
     "**/*.ts"
+  ],
+  "exclude": [
+    "src/voice/unused/**/*",
+    "src/voice-v2/engines/**/*",
+    "src/voice-v2/managers/**/*",
+    "src/voice-v2/utils/**/*",
+    "src/voice-v2/integration-example.ts",
+    "src/voice-v2/voice-config.ts",
+    "src/voice-v2/types/voice-types.ts",
+    "src/voice-v2/index.ts"
   ]
 }

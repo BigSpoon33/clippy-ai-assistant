@@ -1,7 +1,7 @@
 {
 	"id": "clippy-ai-assistant",
 	"name": "CLIPPY AI Assistant",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "AI-powered personal assistant with intelligent link suggestions, semantic analysis, orphan detection, and enhanced graph visualization. Supports Ollama, OpenAI, and Anthropic.",
 	"author": "Lars Ladewig",

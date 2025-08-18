@@ -6,6 +6,7 @@
 // ===== PLUGIN SETTINGS =====
 
 export interface ClippySettings {
+  version?: number; // Settings schema version for migrations
   aiProvider: 'ollama' | 'openai' | 'anthropic';
   providers: {
     ollama: {
@@ -28,11 +29,13 @@ export interface ClippySettings {
     autoTagging: boolean;
     noteFormatting: boolean;
     contentSuggestions: boolean;
+    intelligentLinksEnabled: boolean;
   };
   vaultPatterns: {
     tagPrefix: string;
     dateFormat: string;
     templateFolder: string;
+    suggestionConfidenceThreshold: number;
   };
   research: {
     searchEngine: {
@@ -54,6 +57,45 @@ export interface ClippySettings {
       wisdomExtraction: string;
       conceptExtraction: string;
     };
+  };
+  voice: {
+    enabled: boolean;
+    wakeWord: string;
+    customWakeWords: string[];
+    continuousMode: boolean;
+    ttsEngine: 'piper' | 'openai' | 'elevenlabs';
+    ttsVoice: string;
+    elevenlabsApiKey?: string;
+    openaiTts: {
+      baseUrl: string;
+      apiKey: string;
+      model: string;
+      voice: string;
+      responseSplitting: 'none' | 'sentences' | 'paragraphs';
+    };
+    sttLanguage: string;
+    audioDevices: {
+      microphone: string;
+      speaker: string;
+    };
+    permissions: {
+      microphoneAccess: boolean;
+      autoStart: boolean;
+    };
+    processing: {
+      wakeWordSensitivity: number;
+      noiseReduction: boolean;
+      audioBufferSize: number;
+    };
+    whisper: {
+      device: 'cpu' | 'cuda';
+      modelSize: 'tiny' | 'base' | 'small' | 'medium' | 'large';
+    };
+    fallbacks: {
+      useWebSpeechAPI: boolean;
+      showTextWhenNoAudio: boolean;
+    };
+    visualizers: VoiceVisualizersConfig;
   };
 }
 
@@ -134,6 +176,100 @@ export interface PreservedElement {
   content: string;
 }
 
+// ===== VOICE ASSISTANT TYPES =====
+
+export interface VoiceState {
+  isListening: boolean;
+  isProcessing: boolean;
+  isSpeaking: boolean;
+  conversationActive: boolean;
+  wakeWordDetected: boolean;
+  error: string | null;
+}
+
+export interface AudioConfig {
+  sampleRate: number;
+  channels: number;
+  bitDepth: number;
+  frameSize: number;
+}
+
+export interface ConversationTurn {
+  id: string;
+  timestamp: Date;
+  type: 'user' | 'assistant';
+  text: string;
+  audioData?: ArrayBuffer;
+  metadata?: {
+    processingTime?: number;
+    confidence?: number;
+    source?: 'voice' | 'text';
+  };
+}
+
+export interface ConversationContext {
+  history: ConversationTurn[];
+  currentTurn: ConversationTurn | null;
+  metadata: {
+    startTime: Date;
+    turnCount: number;
+    lastActivity: Date;
+  };
+}
+
+export interface VoiceCommand {
+  text: string;
+  intent: string;
+  confidence: number;
+  parameters?: Record<string, any>;
+  timestamp: Date;
+}
+
+// Voice Visualizer Configuration Interfaces
+export interface VADVisualizerConfig {
+  enabled: boolean;
+  sensitivity: number; // 0-1
+  size: 'small' | 'medium' | 'large';
+  position: 'inline' | 'floating' | 'corner';
+  showConfidence: boolean;
+  animationSpeed: 'slow' | 'normal' | 'fast';
+  colors: {
+    silent: string;
+    speech: string;
+    noise: string;
+  };
+}
+
+export interface TTSVisualizerConfig {
+  enabled: boolean;
+  spectrumBars: number; // 8-48
+  height: number; // pixels
+  showBorder: boolean;
+  borderIntensity: number; // 0.1-2.0
+  showGlow: boolean;
+  glowThreshold: number; // 0-1
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+  };
+  smoothing: number; // 0-1
+  minDecibels: number;
+  maxDecibels: number;
+}
+
+export interface VoiceVisualizersConfig {
+  vad: VADVisualizerConfig;
+  tts: TTSVisualizerConfig;
+}
+
+export interface AudioDeviceInfo {
+  deviceId: string;
+  label: string;
+  kind: 'audioinput' | 'audiooutput';
+  groupId: string;
+}
+
 // ===== UI COMPONENTS =====
 
 export interface ModalConfig {
@@ -183,6 +319,7 @@ export interface PrivacySettings {
 // ===== DEFAULT SETTINGS =====
 
 export const DEFAULT_SETTINGS: ClippySettings = {
+  version: 2, // Current settings schema version (v2 includes visualizer configs)
   aiProvider: 'ollama',
   providers: {
     ollama: {
@@ -205,11 +342,13 @@ export const DEFAULT_SETTINGS: ClippySettings = {
     autoTagging: true,
     noteFormatting: true,
     contentSuggestions: true,
+    intelligentLinksEnabled: true,
   },
   vaultPatterns: {
     tagPrefix: '#',
     dateFormat: 'YYYY-MM-DD',
     templateFolder: '40 - Obsidian/Templates',
+    suggestionConfidenceThreshold: 0.7,
   },
   research: {
     searchEngine: {
@@ -266,6 +405,75 @@ Format your response with clear headings and bullet points for each section.`,
 
 ## Important Notes
 - Any warnings, contradictions, or areas of debate`
+    },
+  },
+  voice: {
+    enabled: false,
+    wakeWord: 'hey clippy',
+    customWakeWords: [],
+    continuousMode: true,
+    ttsEngine: 'piper', // Piper as default for high quality local TTS
+    ttsVoice: 'en_US-lessac-medium',
+    openaiTts: {
+      baseUrl: 'http://localhost:4123/v1',
+      apiKey: 'none',
+      model: 'tts-1',
+      voice: 'alloy',
+      responseSplitting: 'paragraphs',
+    },
+    sttLanguage: 'en-US',
+    audioDevices: {
+      microphone: 'default',
+      speaker: 'default',
+    },
+    permissions: {
+      microphoneAccess: false,
+      autoStart: false,
+    },
+    processing: {
+      wakeWordSensitivity: 0.7,
+      noiseReduction: true,
+      audioBufferSize: 4096,
+    },
+    whisper: {
+      device: 'cpu', // Default to CPU to avoid CUDA memory issues
+      modelSize: 'base',
+    },
+    fallbacks: {
+      useWebSpeechAPI: false, // Disabled since we're using local Whisper
+      showTextWhenNoAudio: true,
+    },
+    visualizers: {
+      vad: {
+        enabled: true,
+        sensitivity: 0.7, // VAD detection sensitivity (0-1)
+        size: 'medium', // 'small' | 'medium' | 'large'
+        position: 'inline', // 'inline' | 'floating' | 'corner'
+        showConfidence: true, // Show confidence score
+        animationSpeed: 'normal', // 'slow' | 'normal' | 'fast'
+        colors: {
+          silent: '#6b7280', // Gray for silent
+          speech: '#10b981', // Green for speech detected  
+          noise: '#f59e0b', // Amber for noise/uncertain
+        },
+      },
+      tts: {
+        enabled: true,
+        spectrumBars: 24, // Number of frequency bars (8-48)
+        height: 50, // Spectrum height in pixels
+        showBorder: true, // Audio-reactive border pulsing
+        borderIntensity: 1.0, // Border pulse intensity (0.1-2.0)
+        showGlow: true, // Glow effect during loud speech
+        glowThreshold: 0.7, // Volume threshold for glow (0-1)
+        colors: {
+          primary: 'auto', // 'auto' uses theme accent color
+          secondary: 'auto', // 'auto' uses theme accent hover
+          background: 'auto', // 'auto' uses theme background
+        },
+        smoothing: 0.85, // Frequency smoothing (0-1)
+        minDecibels: -90, // Minimum audio level
+        maxDecibels: -10, // Maximum audio level
+      },
     },
   },
 };

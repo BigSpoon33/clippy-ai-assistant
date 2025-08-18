@@ -1,14 +1,34 @@
-/**
- * CLIPPY AI Assistant - Main Plugin Class
- * Entry point for the Obsidian plugin with lifecycle management
- */
+// /**
+//  * CLIPPY AI Assistant - Refactored Main Plugin Class
+//  * Simplified plugin class focused on lifecycle and coordination
+//  */
 
-import { Plugin, Notice, MarkdownView } from 'obsidian';
+import { Plugin, Notice, MarkdownView, Editor, WorkspaceLeaf } from 'obsidian';
 import { ClippySettings, DEFAULT_SETTINGS } from './types';
 import { ClippySettingsTab, SettingsManager } from './settings';
 import { CommandHandlers } from './ui/command-handlers';
 import { VaultAnalyzer } from './utils/vault-analyzer';
 import { ProviderFactory } from './ai/provider-factory';
+import { ClippyErrorBoundaries } from './utils/error-boundaries';
+
+// Import extracted components
+import { EnhancementModal, TaggingModal } from './ui/modals';
+import { ClippyInsightsView, VIEW_TYPE_CLIPPY_INSIGHTS } from './ui/views';
+import { VaultAgentSidebarView, VIEW_TYPE_VAULT_AGENT } from './ui/vault-agent-sidebar-view';
+import { ContentEnhancer, TagGenerator, TagEditor } from './services';
+
+// Phase 2 imports
+import { LinkSuggestionEngine } from './link-suggestions/suggestion-engine';
+import { KnowledgeGraphManager } from './knowledge-graph/graph-manager';
+import { OrphanDetector } from './discovery/orphan-detector';
+import { SuggestionPanel } from './ui/suggestion-panel';
+import { OrphanManagementModal } from './ui/orphan-management-modal';
+import { EmbeddingManager } from './semantic/embedding-manager';
+import { SimilarityEngine } from './semantic/similarity-engine';
+
+
+// Voice Assistant System imports
+import { LocalVoiceIntegration } from './voice-v2/local-voice-integration';
 
 export default class ClippyPlugin extends Plugin {
   settings: ClippySettings;
@@ -16,59 +36,33 @@ export default class ClippyPlugin extends Plugin {
   commandHandlers: CommandHandlers;
   vaultAnalyzer: VaultAnalyzer;
 
+  // Service instances
+  private contentEnhancer: ContentEnhancer;
+  private tagGenerator: TagGenerator;
+  private tagEditor: TagEditor;
+
+  // Phase 2 components
+  private linkSuggestionEngine: LinkSuggestionEngine;
+  private knowledgeGraphManager: KnowledgeGraphManager;
+  private orphanDetector: OrphanDetector;
+  private embeddingManager: EmbeddingManager;
+  private similarityEngine: SimilarityEngine;
+  
+  
+  // Voice Assistant System (Local Whisper + Piper)
+  public voiceSystemV2: LocalVoiceIntegration | null = null;
+
   async onload() {
     console.log('CLIPPY AI Assistant: Loading plugin...');
 
     try {
-      // Initialize settings manager
-      this.settingsManager = new SettingsManager(this);
-      
-      // Load settings
-      this.settings = await this.settingsManager.loadSettings();
-      
-      // Validate settings
-      const validation = this.settingsManager.validateSettings(this.settings);
-      if (!validation.valid) {
-        console.warn('CLIPPY: Settings validation issues:', validation.errors);
-        // Show warning but continue loading
-        new Notice(`CLIPPY: ${validation.errors[0]}`, 5000);
-      }
-
-      // Initialize vault analyzer
-      this.vaultAnalyzer = new VaultAnalyzer(this.app);
-
-      // Initialize command handlers
-      this.commandHandlers = new CommandHandlers(this);
-      this.commandHandlers.registerCommands();
-
-      // Add settings tab
-      this.addSettingTab(new ClippySettingsTab(this.app, this));
-
-      // Add ribbon icon
-      this.addRibbonIcon('sparkles', 'CLIPPY AI Assistant', async () => {
-        // Quick access to enhance note command
-        const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-        if (activeView) {
-          // Execute the enhance note command directly
-          this.commandHandlers.handleEnhanceNote(activeView.editor, activeView);
-        } else {
-          new Notice('Open a note to use CLIPPY');
-        }
-      });
-
-      // Analyze vault patterns on startup (in background)
-      this.scheduleVaultAnalysis();
-
-      // Register events
-      this.registerEvents();
-
+      await this.initializePlugin();
       console.log('CLIPPY AI Assistant: Plugin loaded successfully');
       
       // Show welcome notice on first load
       if (this.isFirstLoad()) {
         this.showWelcomeMessage();
       }
-
     } catch (error) {
       console.error('CLIPPY AI Assistant: Failed to load plugin:', error);
       new Notice(`CLIPPY: Failed to load plugin: ${error.message}`, 0);
@@ -78,6 +72,13 @@ export default class ClippyPlugin extends Plugin {
   async onunload() {
     console.log('CLIPPY AI Assistant: Unloading plugin...');
     
+    
+    // Clean up voice assistant system
+    if (this.voiceSystemV2) {
+      await this.voiceSystemV2.cleanup();
+      this.voiceSystemV2 = null;
+    }
+    
     // Clear any caches
     ProviderFactory.clearCache();
     this.vaultAnalyzer?.clearCache();
@@ -85,25 +86,260 @@ export default class ClippyPlugin extends Plugin {
     console.log('CLIPPY AI Assistant: Plugin unloaded');
   }
 
-  /**
-   * Schedule vault analysis in the background
-   */
-  private async scheduleVaultAnalysis(): Promise<void> {
-    // Wait a bit after plugin load to avoid blocking startup
-    setTimeout(async () => {
-      try {
-        console.log('CLIPPY: Starting background vault analysis...');
-        await this.vaultAnalyzer.analyzeVaultPatterns();
-        console.log('CLIPPY: Vault analysis completed');
-      } catch (error) {
-        console.warn('CLIPPY: Background vault analysis failed:', error);
+//   /**
+//    * Initialize the plugin with error boundaries
+//    */
+  private async initializePlugin(): Promise<void> {
+    await ClippyErrorBoundaries.fileSystemOperation(
+      async () => {
+        // Initialize settings manager
+        this.settingsManager = new SettingsManager(this);
+        
+        // Load settings with error boundary
+        this.settings = await ClippyErrorBoundaries.fileSystemOperation(
+          () => this.settingsManager.loadSettings(),
+          'load plugin settings',
+          undefined,
+          {
+            fallback: async () => {
+              console.warn('CLIPPY: Failed to load settings, using defaults');
+              return { ...DEFAULT_SETTINGS };
+            },
+            showUserNotice: true
+          }
+        );
+        
+        // Validate settings
+        const validation = ClippyErrorBoundaries.validationOperation(
+          () => this.settingsManager.validateSettings(this.settings),
+          'validate plugin settings',
+          this.settings,
+          {
+            fallback: () => ({ valid: false, errors: ['Settings validation failed'] }),
+            showUserNotice: false
+          }
+        );
+        
+        if (!validation.valid) {
+          console.warn('CLIPPY: Settings validation issues:', validation.errors);
+          new Notice(`CLIPPY: ${validation.errors[0]}`, 5000);
+        }
+
+        // Initialize services
+        this.initializeServices();
+
+        // Initialize vault analyzer
+        this.vaultAnalyzer = new VaultAnalyzer(this.app);
+
+        // Initialize Phase 2 components
+        await this.initializePhase2Components();
+
+        
+        // Initialize local voice assistant system
+        await this.initializeVoiceSystemV2();
+
+        // Initialize command handlers
+        this.commandHandlers = new CommandHandlers(this);
+        this.commandHandlers.registerCommands();
+
+        // Add settings tab
+        this.addSettingTab(new ClippySettingsTab(this.app, this));
+
+        // Add ribbon icon
+        this.addRibbonIcon('sparkles', 'CLIPPY AI Assistant', async () => {
+          const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+          if (activeView) {
+            this.showEnhancementModal(activeView.editor);
+          } else {
+            new Notice('Open a note to use CLIPPY');
+          }
+        });
+
+        // Register views
+        this.registerView(
+          VIEW_TYPE_CLIPPY_INSIGHTS,
+          (leaf) => new ClippyInsightsView(leaf, this.settings)
+        );
+        
+        this.registerView(
+          VIEW_TYPE_VAULT_AGENT,
+          (leaf) => new VaultAgentSidebarView(leaf, this)
+        );
+
+        // Schedule vault analysis in background
+        this.scheduleVaultAnalysis();
+
+        // Register events
+        this.registerEvents();
+      },
+      'plugin initialization',
+      undefined,
+      {
+        showUserNotice: true
       }
-    }, 5000); // 5 second delay
+    );
   }
 
+//   /**
+//    * Initialize service instances
+//    */
+  private initializeServices(): void {
+    this.contentEnhancer = new ContentEnhancer(this.settings);
+    this.tagGenerator = new TagGenerator(this.settings);
+    this.tagEditor = new TagEditor();
+  }
+
+//   /**
+//    * Initialize Phase 2 components
+//    */
+  private async initializePhase2Components(): Promise<void> {
+    await ClippyErrorBoundaries.aiProviderOperation(
+      async () => {
+        this.knowledgeGraphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache);
+        this.orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache);
+        this.embeddingManager = new EmbeddingManager(this.settings.providers.ollama.baseUrl);
+        this.similarityEngine = new SimilarityEngine(this.embeddingManager);
+        
+        const suggestionSettings = {
+          realTimeEnabled: this.settings.features.intelligentLinksEnabled,
+          minConfidence: this.settings.vaultPatterns.suggestionConfidenceThreshold,
+          maxSuggestions: 5,
+          triggers: ['typing', 'paragraph', 'query'] as any,
+          showInline: true,
+          showSidebar: true,
+          autoLinkThreshold: 0.9
+        };
+        
+        this.linkSuggestionEngine = new LinkSuggestionEngine(
+          this.embeddingManager, 
+          this.similarityEngine, 
+          suggestionSettings, 
+          this.app.vault, 
+          this.app.metadataCache
+        );
+      },
+      'initialize Phase 2 components',
+      {
+        fallback: async () => {
+          console.log('CLIPPY: Phase 2 components initialization failed, using fallback');
+        },
+        showUserNotice: false
+      }
+    );
+  }
+
+
   /**
-   * Register event listeners
+   * Initialize the local voice assistant system
+   * 
+   * Sets up Whisper STT + Piper TTS for local voice processing
    */
+  private async initializeVoiceSystemV2(): Promise<void> {
+    try {
+      console.log('CLIPPY: Initializing Voice System v2...');
+      
+      // Initialize local voice system
+      this.voiceSystemV2 = new LocalVoiceIntegration(this);
+      await this.voiceSystemV2.initialize();
+      
+      console.log('CLIPPY: Voice System v2 initialized successfully');
+    } catch (error) {
+      console.error('CLIPPY: Voice System v2 initialization failed:', error);
+      new Notice('Voice System v2 initialization failed - check console for details');
+    }
+  }
+
+
+//   /**
+//    * Handle follow-up actions from voice commands (commented out for compatibility)
+//    */
+  // private async handleVoiceFollowUpActions(actions: string[]): Promise<void> {
+  //   for (const action of actions) {
+  //     switch (action) {
+  //       case 'voice_disable':
+  //         await this.toggleVoice();
+  //         break;
+  //       default:
+  //         console.log(`Unknown follow-up action: ${action}`);
+  //     }
+  //   }
+  // }
+
+
+
+
+//   /**
+//    * Show enhancement modal using extracted component
+//    */
+  showEnhancementModal(editor: Editor): void {
+    const content = editor.getValue();
+    if (!content.trim()) {
+      new Notice('Note is empty');
+      return;
+    }
+
+    const modal = new EnhancementModal(
+      this.app,
+      content,
+      (enhancedContent: string) => {
+        editor.setValue(enhancedContent);
+        new Notice('Note enhanced successfully!');
+      },
+      this.contentEnhancer
+    );
+    modal.open();
+  }
+
+//   /**
+//    * Show tagging modal using extracted component
+//    */
+  showTaggingModal(editor: Editor): void {
+    const content = editor.getValue();
+    if (!content.trim()) {
+      new Notice('Note is empty');
+      return;
+    }
+
+    const modal = new TaggingModal(
+      this.app,
+      content,
+      (tags: string[]) => {
+        this.tagEditor.addTagsToNote(editor, tags);
+        new Notice(`Added ${tags.length} tags to note`);
+      },
+      this.tagGenerator
+    );
+    modal.open();
+  }
+
+//   /**
+//    * Schedule vault analysis in the background
+//    */
+  private async scheduleVaultAnalysis(): Promise<void> {
+    setTimeout(async () => {
+      await ClippyErrorBoundaries.aiProviderOperation(
+        () => this.vaultAnalyzer.analyzeVaultPatterns(),
+        'background vault analysis',
+        {
+          fallback: async () => {
+            console.log('CLIPPY: Vault analysis failed, using empty patterns');
+            return {
+              tagPatterns: [],
+              dateFormats: [],
+              cssClasses: [],
+              frontmatterSchemas: [],
+              wikilinkPatterns: []
+            };
+          },
+          showUserNotice: false
+        }
+      );
+    }, 5000);
+  }
+
+//   /**
+//    * Register event listeners
+//    */
   private registerEvents(): void {
     // Re-analyze vault when files are created/modified/deleted
     this.registerEvent(
@@ -123,20 +359,13 @@ export default class ClippyPlugin extends Plugin {
         this.debouncedVaultAnalysis();
       })
     );
-
-    // Clear provider cache when settings change
-    this.registerEvent(
-      this.app.workspace.on('file-open', () => {
-        // Could be used for context-aware suggestions in the future
-      })
-    );
   }
 
   private vaultAnalysisTimeout: NodeJS.Timeout | null = null;
 
-  /**
-   * Debounced vault analysis to avoid excessive re-analysis
-   */
+//   /**
+//    * Debounced vault analysis to avoid excessive re-analysis
+//    */
   private debouncedVaultAnalysis(): void {
     if (this.vaultAnalysisTimeout) {
       clearTimeout(this.vaultAnalysisTimeout);
@@ -148,57 +377,111 @@ export default class ClippyPlugin extends Plugin {
       } catch (error) {
         console.warn('CLIPPY: Debounced vault analysis failed:', error);
       }
-    }, 30000); // 30 second delay
+    }, 30000);
   }
 
-  /**
-   * Save settings with validation
-   */
+//   /**
+//    * Save settings with validation
+//    */
   async saveSettings(): Promise<void> {
-    try {
-      // Validate before saving
-      const validation = this.settingsManager.validateSettings(this.settings);
-      if (!validation.valid) {
-        console.warn('CLIPPY: Settings validation failed:', validation.errors);
-        // Show error but still save (user might be in the middle of configuration)
-        new Notice(`CLIPPY: ${validation.errors[0]}`, 3000);
+    await ClippyErrorBoundaries.fileSystemOperation(
+      async () => {
+        // Validate before saving
+        const validation = ClippyErrorBoundaries.validationOperation(
+          () => this.settingsManager.validateSettings(this.settings),
+          'validate settings before save',
+          this.settings,
+          {
+            fallback: () => ({ valid: false, errors: ['Settings validation failed'] }),
+            showUserNotice: false
+          }
+        );
+        
+        if (!validation.valid) {
+          console.warn('CLIPPY: Settings validation failed:', validation.errors);
+          new Notice(`CLIPPY: ${validation.errors[0]}`, 3000);
+        }
+
+        await this.settingsManager.saveSettings(this.settings);
+        
+        // Update services with new settings
+        this.contentEnhancer.updateSettings(this.settings);
+        this.tagGenerator.updateSettings(this.settings);
+        
+        // Clear provider cache when settings change
+        ProviderFactory.clearCache();
+        
+        console.log('CLIPPY: Settings saved successfully');
+      },
+      'save plugin settings',
+      undefined,
+      {
+        showUserNotice: true
       }
-
-      await this.settingsManager.saveSettings(this.settings);
-      
-      // Clear provider cache when settings change
-      ProviderFactory.clearCache();
-      
-      console.log('CLIPPY: Settings saved successfully');
-    } catch (error) {
-      console.error('CLIPPY: Failed to save settings:', error);
-      new Notice(`CLIPPY: Failed to save settings: ${error.message}`);
-    }
+    );
   }
 
-  /**
-   * Load settings with fallback to defaults
-   */
-  async loadSettings(): Promise<ClippySettings> {
+//   /**
+//    * Get AI provider instance
+//    */
+  async getAIProvider() {
+    return await ClippyErrorBoundaries.aiProviderOperation(
+      () => ProviderFactory.createProvider(this.settings),
+      'get AI provider',
+      {
+        showUserNotice: true
+      }
+    );
+  }
+
+//   /**
+//    * Get available AI providers
+//    */
+  async getAvailableProviders(): Promise<string[]> {
     try {
-      return await this.settingsManager.loadSettings();
+      return await ProviderFactory.getAvailableProviders(this.settings);
     } catch (error) {
-      console.error('CLIPPY: Failed to load settings, using defaults:', error);
-      return { ...DEFAULT_SETTINGS };
+      console.error('CLIPPY: Failed to get available providers:', error);
+      return [];
     }
   }
 
-  /**
-   * Check if this is the first time the plugin is loaded
-   */
+//   /**
+//    * Force refresh of vault patterns
+//    */
+  async refreshVaultPatterns(): Promise<void> {
+    await ClippyErrorBoundaries.aiProviderOperation(
+      () => this.vaultAnalyzer.analyzeVaultPatterns(true),
+      'refresh vault patterns',
+      {
+        fallback: async () => {
+          console.warn('CLIPPY: Failed to refresh vault patterns, using empty patterns');
+          return {
+            tagPatterns: [],
+            dateFormats: [],
+            cssClasses: [],
+            frontmatterSchemas: [],
+            wikilinkPatterns: []
+          };
+        },
+        showUserNotice: true
+      }
+    );
+    
+    new Notice('CLIPPY: Vault patterns refreshed');
+  }
+
+//   /**
+//    * Check if this is the first time the plugin is loaded
+//    */
   private isFirstLoad(): boolean {
     return !this.settings.vaultPatterns.templateFolder || 
            this.settings.vaultPatterns.templateFolder === DEFAULT_SETTINGS.vaultPatterns.templateFolder;
   }
 
-  /**
-   * Show welcome message to new users
-   */
+//   /**
+//    * Show welcome message to new users
+//    */
   private showWelcomeMessage(): void {
     const message = `🤖 Welcome to CLIPPY AI Assistant!
 
@@ -212,46 +495,9 @@ Check the command palette for all CLIPPY features!`;
     new Notice(message, 10000);
   }
 
-  /**
-   * Get AI provider instance
-   */
-  async getAIProvider() {
-    try {
-      return await ProviderFactory.createProvider(this.settings);
-    } catch (error) {
-      console.error('CLIPPY: Failed to get AI provider:', error);
-      throw new Error(`No AI provider available: ${error.message}`);
-    }
-  }
-
-  /**
-   * Get available AI providers
-   */
-  async getAvailableProviders(): Promise<string[]> {
-    try {
-      return await ProviderFactory.getAvailableProviders(this.settings);
-    } catch (error) {
-      console.error('CLIPPY: Failed to get available providers:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Force refresh of vault patterns
-   */
-  async refreshVaultPatterns(): Promise<void> {
-    try {
-      await this.vaultAnalyzer.analyzeVaultPatterns(true);
-      new Notice('CLIPPY: Vault patterns refreshed');
-    } catch (error) {
-      console.error('CLIPPY: Failed to refresh vault patterns:', error);
-      new Notice(`CLIPPY: Failed to refresh patterns: ${error.message}`);
-    }
-  }
-
-  /**
-   * Get plugin status for debugging
-   */
+//   /**
+//    * Get plugin status for debugging
+//    */
   getStatus(): {
     loaded: boolean;
     settingsValid: boolean;
@@ -268,9 +514,9 @@ Check the command palette for all CLIPPY features!`;
     };
   }
 
-  /**
-   * Emergency reset for debugging
-   */
+//   /**
+//    * Emergency reset for debugging
+//    */
   async emergencyReset(): Promise<void> {
     try {
       console.log('CLIPPY: Performing emergency reset...');
@@ -294,6 +540,3 @@ Check the command palette for all CLIPPY features!`;
     }
   }
 }
-
-// Export for use in other files
-export { ClippyPlugin };

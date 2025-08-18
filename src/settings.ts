@@ -3,7 +3,7 @@
  * Secure settings storage and UI with credential encryption
  */
 
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, Modal } from 'obsidian';
 import { ClippySettings, DEFAULT_SETTINGS, AI_MODELS } from './types';
 import { ProviderFactory } from './ai/provider-factory';
 import ClippyPlugin from './main';
@@ -27,6 +27,9 @@ export class ClippySettingsTab extends PluginSettingTab {
       text: 'Configure your AI providers and customize CLIPPY\'s behavior.' 
     });
 
+    // Documentation link
+    this.addDocumentationSection();
+
     // AI Provider Selection
     this.addProviderSection();
 
@@ -39,11 +42,277 @@ export class ClippySettingsTab extends PluginSettingTab {
     // Research Settings
     this.addResearchSection();
 
+    // Voice Settings
+    this.addVoiceSection();
+
     // Advanced Settings
     this.addAdvancedSection();
 
     // Connection Test Section
     this.addTestSection();
+  }
+
+  private addDocumentationSection(): void {
+    const { containerEl } = this;
+
+    // Documentation section with README link
+    const docSection = containerEl.createEl('div', { cls: 'clippy-doc-section' });
+    docSection.style.cssText = `
+      background: var(--background-secondary);
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+    `;
+
+    const docHeader = docSection.createEl('h3', { text: '📚 Documentation & Help' });
+    docHeader.style.marginTop = '0';
+
+    const docDesc = docSection.createEl('p', { 
+      text: 'Get started with CLIPPY AI Assistant, learn about features, and find troubleshooting tips.'
+    });
+    docDesc.style.cssText = 'color: var(--text-muted); margin-bottom: 12px;';
+
+    // Create button row
+    const buttonRow = docSection.createEl('div', { cls: 'clippy-doc-buttons' });
+    buttonRow.style.cssText = 'display: flex; gap: 12px; flex-wrap: wrap;';
+
+    // README button
+    const readmeButton = buttonRow.createEl('button', { 
+      text: '📖 View README',
+      cls: 'mod-cta'
+    });
+    readmeButton.style.cssText = 'padding: 8px 16px; border-radius: 4px;';
+    readmeButton.addEventListener('click', () => {
+      this.openReadmeFile();
+    });
+
+    // Quick start guide
+    const quickStartButton = buttonRow.createEl('button', { 
+      text: '🚀 Quick Start Guide',
+      type: 'button'
+    });
+    quickStartButton.style.cssText = 'padding: 8px 16px; border-radius: 4px;';
+    quickStartButton.addEventListener('click', () => {
+      this.showQuickStartGuide();
+    });
+
+    // Help section with common commands
+    const helpText = docSection.createEl('div', { cls: 'clippy-help-text' });
+    helpText.style.cssText = `
+      background: var(--background-primary);
+      border-radius: 4px;
+      padding: 12px;
+      margin-top: 12px;
+      font-size: 14px;
+    `;
+    
+    helpText.innerHTML = `
+      <strong>💡 Quick Tips:</strong><br>
+      • Use <code>Ctrl+P</code> to open Command Palette and find CLIPPY commands<br>
+      • Try <code>Ctrl+Shift+T</code> for quick AI tagging<br>
+      • Start with "Enhance current note with AI" to see CLIPPY in action<br>
+      • Use "Analyze vault patterns" to understand your note structure
+    `;
+  }
+
+  private openReadmeFile(): void {
+    // Show README content in a modal since we can't directly open external files in Obsidian
+    this.showReadmeModal();
+  }
+
+  private showReadmeModal(): void {
+    const modal = new class extends Modal {
+      constructor(app: App) {
+        super(app);
+      }
+
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('clippy-readme-modal');
+
+        // Header
+        const header = contentEl.createEl('div', { cls: 'modal-header' });
+        header.style.cssText = 'border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 16px; margin-bottom: 20px;';
+        header.createEl('h2', { text: '📖 CLIPPY AI Assistant Documentation' });
+        
+        const subtitle = header.createEl('p');
+        subtitle.style.cssText = 'color: var(--text-muted); margin: 8px 0 0 0;';
+        subtitle.textContent = 'Complete guide to using CLIPPY AI Assistant in Obsidian';
+
+        // Content area
+        const content = contentEl.createEl('div', { cls: 'readme-content' });
+        content.style.cssText = `
+          max-height: 60vh;
+          overflow-y: auto;
+          padding: 0 4px;
+          line-height: 1.6;
+        `;
+
+        // Quick reference content
+        content.innerHTML = `
+          <h3>🚀 Quick Start</h3>
+          <ol>
+            <li><strong>Configure AI Provider:</strong> Set up Ollama, OpenAI, or Anthropic in the settings below</li>
+            <li><strong>Test Connection:</strong> Use the "Test Connection" button to verify your setup</li>
+            <li><strong>Start Enhancing:</strong> Open any note and use <code>Ctrl+P</code> → "Enhance current note with AI"</li>
+          </ol>
+
+          <h3>🎮 Main Commands</h3>
+          <ul>
+            <li><strong>Enhance current note with AI</strong> - Improve content clarity and organization</li>
+            <li><strong>Quick AI tagging suggestions</strong> (<code>Ctrl+Shift+T</code>) - Get intelligent tag recommendations</li>
+            <li><strong>Summarize current note</strong> - Generate concise summaries</li>
+            <li><strong>Chat with AI about current note</strong> - Interactive AI conversation</li>
+            <li><strong>Comprehensive research</strong> - Advanced research with web search and vault analysis</li>
+          </ul>
+
+          <h3>🔧 Troubleshooting</h3>
+          <ul>
+            <li><strong>AI Provider Issues:</strong> Verify API keys and URLs in settings</li>
+            <li><strong>Ollama Not Working:</strong> Ensure Ollama is running on <code>http://localhost:11434</code></li>
+            <li><strong>Research Features:</strong> Check internet connection and search engine API keys</li>
+            <li><strong>Performance:</strong> Large vaults may take longer for analysis operations</li>
+          </ul>
+
+          <h3>💡 Pro Tips</h3>
+          <ul>
+            <li>Use "Analyze vault patterns" to understand your note organization</li>
+            <li>Enable "Intelligent Links" for automatic connection suggestions</li>
+            <li>Customize research templates for consistent output formatting</li>
+            <li>Try different AI models to find what works best for your use case</li>
+          </ul>
+
+          <h3>🔬 Research System</h3>
+          <p>The comprehensive research system can:</p>
+          <ul>
+            <li>Generate research notes from simple checklists</li>
+            <li>Search the web and save individual source pages</li>
+            <li>Analyze your vault for related content</li>
+            <li>Extract and synthesize information using AI</li>
+            <li>Create organized, comprehensive research reports</li>
+          </ul>
+
+          <h3>🌉 Bridge Discovery</h3>
+          <p>CLIPPY can find opportunities to connect related notes:</p>
+          <ul>
+            <li>Identifies orphaned notes that need connections</li>
+            <li>Suggests semantic links between similar content</li>
+            <li>Recommends tag bridges for better organization</li>
+            <li>Creates index notes for topic clusters</li>
+          </ul>
+        `;
+
+        // Footer with close button
+        const footer = contentEl.createEl('div', { cls: 'modal-footer' });
+        footer.style.cssText = 'border-top: 1px solid var(--background-modifier-border); padding-top: 16px; margin-top: 20px; text-align: center;';
+        
+        const closeBtn = footer.createEl('button', { text: 'Close', cls: 'mod-cta' });
+        closeBtn.addEventListener('click', () => this.close());
+      }
+    }(this.app);
+
+    modal.open();
+  }
+
+  private showQuickStartGuide(): void {
+    const modal = new class extends Modal {
+      constructor(app: App) {
+        super(app);
+      }
+
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass('clippy-quickstart-modal');
+
+        // Header
+        const header = contentEl.createEl('div', { cls: 'modal-header' });
+        header.style.cssText = 'text-align: center; margin-bottom: 24px;';
+        header.createEl('h2', { text: '🚀 Quick Start Guide' });
+        header.createEl('p', { text: 'Get up and running with CLIPPY in 3 simple steps', cls: 'modal-subtitle' });
+
+        // Steps
+        const stepsContainer = contentEl.createEl('div', { cls: 'quickstart-steps' });
+        
+        const steps = [
+          {
+            number: '1',
+            title: 'Configure Your AI Provider',
+            description: 'Choose and set up Ollama (local), OpenAI, or Anthropic Claude',
+            action: 'Scroll down to configure your preferred AI provider',
+            icon: '⚙️'
+          },
+          {
+            number: '2', 
+            title: 'Test Your Connection',
+            description: 'Verify that CLIPPY can communicate with your AI provider',
+            action: 'Use the "Test Connection" button at the bottom of settings',
+            icon: '🔗'
+          },
+          {
+            number: '3',
+            title: 'Start Using CLIPPY',
+            description: 'Open any note and try your first AI enhancement',
+            action: 'Use Ctrl+P → "Enhance current note with AI"',
+            icon: '✨'
+          }
+        ];
+
+        steps.forEach(step => {
+          const stepEl = stepsContainer.createEl('div', { cls: 'quickstart-step' });
+          stepEl.style.cssText = `
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+            background: var(--background-secondary);
+            border-radius: 8px;
+            border-left: 4px solid var(--interactive-accent);
+          `;
+
+          const stepNumber = stepEl.createEl('div', { cls: 'step-number' });
+          stepNumber.style.cssText = `
+            background: var(--interactive-accent);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+          `;
+          stepNumber.textContent = step.number;
+
+          const stepContent = stepEl.createEl('div', { cls: 'step-content' });
+          stepContent.style.cssText = 'flex: 1;';
+
+          const stepTitle = stepContent.createEl('h3');
+          stepTitle.style.cssText = 'margin: 0 0 8px 0; display: flex; align-items: center; gap: 8px;';
+          stepTitle.innerHTML = `${step.icon} ${step.title}`;
+
+          const stepDesc = stepContent.createEl('p');
+          stepDesc.style.cssText = 'margin: 0 0 8px 0; color: var(--text-muted);';
+          stepDesc.textContent = step.description;
+
+          const stepAction = stepContent.createEl('div');
+          stepAction.style.cssText = 'font-weight: 500; color: var(--text-accent);';
+          stepAction.textContent = `→ ${step.action}`;
+        });
+
+        // Footer
+        const footer = contentEl.createEl('div', { cls: 'modal-footer' });
+        footer.style.cssText = 'text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border);';
+        
+        const closeBtn = footer.createEl('button', { text: 'Got it! Let\'s start', cls: 'mod-cta' });
+        closeBtn.addEventListener('click', () => this.close());
+      }
+    }(this.app);
+
+    modal.open();
   }
 
   private addProviderSection(): void {
@@ -751,6 +1020,795 @@ Format your response with clear headings and bullet points for each section.`;
       });
   }
 
+  private addVoiceSection(): void {
+    const { containerEl } = this;
+
+    // Ensure voice settings are initialized
+    if (!this.plugin.settings.voice) {
+      this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+    }
+
+    containerEl.createEl('h3', { text: '🎤 Voice Assistant Settings' });
+    containerEl.createEl('p', { 
+      text: 'Configure the local voice assistant powered by Whisper STT and Piper TTS.',
+      cls: 'setting-item-description'
+    });
+
+    new Setting(containerEl)
+      .setName('Enable Voice Assistant')
+      .setDesc('Enable local voice processing with Whisper and Piper')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.enabled || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            this.plugin.settings.voice.enabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Whisper Processing Device')
+      .setDesc('Choose whether to use CPU or GPU for speech recognition. CPU is more stable but slower.')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('cpu', 'CPU (Recommended)')
+          .addOption('cuda', 'GPU (CUDA)')
+          .setValue(this.plugin.settings.voice?.whisper?.device || 'cpu')
+          .onChange(async (value: 'cpu' | 'cuda') => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            if (!this.plugin.settings.voice.whisper) this.plugin.settings.voice.whisper = { ...DEFAULT_SETTINGS.voice.whisper };
+            this.plugin.settings.voice.whisper.device = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Whisper Model Size')
+      .setDesc('Larger models are more accurate but slower and use more memory')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('tiny', 'Tiny (Fastest, least accurate)')
+          .addOption('base', 'Base (Recommended)')
+          .addOption('small', 'Small (Good balance)')
+          .addOption('medium', 'Medium (More accurate)')
+          .addOption('large', 'Large (Most accurate, slowest)')
+          .setValue(this.plugin.settings.voice?.whisper?.modelSize || 'base')
+          .onChange(async (value: 'tiny' | 'base' | 'small' | 'medium' | 'large') => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            if (!this.plugin.settings.voice.whisper) this.plugin.settings.voice.whisper = { ...DEFAULT_SETTINGS.voice.whisper };
+            this.plugin.settings.voice.whisper.modelSize = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('TTS Engine')
+      .setDesc('Choose text-to-speech engine for voice responses')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('piper', 'Piper (Local)')
+          .addOption('openai', 'OpenAI TTS (Configurable)')
+          .addOption('elevenlabs', 'ElevenLabs (Cloud)')
+          .setValue(this.plugin.settings.voice?.ttsEngine || 'piper')
+          .onChange(async (value: 'piper' | 'openai' | 'elevenlabs') => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            this.plugin.settings.voice.ttsEngine = value;
+            await this.plugin.saveSettings();
+            // Refresh settings display to show/hide conditional settings
+            this.display();
+          });
+      });
+
+    // Debug logging for Piper settings visibility
+    console.log('[Settings] Voice TTS Engine:', this.plugin.settings.voice?.ttsEngine);
+    console.log('[Settings] Voice enabled:', this.plugin.settings.voice?.enabled);
+    
+    // Piper TTS Voice Settings (only show when Piper is selected)
+    if (this.plugin.settings.voice?.ttsEngine === 'piper') {
+      console.log('[Settings] Showing Piper configuration section');
+      containerEl.createEl('h5', { text: 'Piper TTS Configuration' });
+      
+      new Setting(containerEl)
+        .setName('Piper Voice Model')
+        .setDesc('Select voice model for Piper TTS. Download additional voices from piper-voices repository.')
+        .addDropdown(dropdown => {
+          // Common Piper voices
+          const piperVoices = [
+            { id: 'en_US-lessac-medium', name: 'Lessac (US English, Medium Quality)' },
+            { id: 'en_US-amy-medium', name: 'Amy (US English, Medium Quality)' },
+            { id: 'en_US-ryan-medium', name: 'Ryan (US English, Medium Quality)' },
+            { id: 'en_GB-alan-medium', name: 'Alan (UK English, Medium Quality)' },
+            { id: 'en_GB-alba-medium', name: 'Alba (UK English, Medium Quality)' },
+            { id: 'en_US-lessac-low', name: 'Lessac (US English, Low Quality)' },
+            { id: 'en_US-amy-low', name: 'Amy (US English, Low Quality)' },
+          ];
+          
+          piperVoices.forEach(voice => {
+            dropdown.addOption(voice.id, voice.name);
+          });
+          
+          // Set current value or default
+          const currentVoice = this.plugin.settings.voice?.ttsVoice || 'en_US-lessac-medium';
+          dropdown.setValue(currentVoice);
+          
+          dropdown.onChange(async (value) => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            this.plugin.settings.voice.ttsVoice = value;
+            await this.plugin.saveSettings();
+          });
+        });
+      
+      // Add custom voice input for advanced users
+      new Setting(containerEl)
+        .setName('Custom Piper Voice (Advanced)')
+        .setDesc('Enter a custom Piper voice model ID if you have installed additional voices')
+        .addText(text => {
+          text
+            .setPlaceholder('e.g., en_US-libritts-high')
+            .onChange(async (value) => {
+              if (value.trim()) {
+                if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+                this.plugin.settings.voice.ttsVoice = value.trim();
+                await this.plugin.saveSettings();
+                // Refresh to update dropdown
+                this.display();
+              }
+            });
+        });
+        
+      // Test Piper voice button  
+      new Setting(containerEl)
+        .setName('Test Piper Voice')
+        .setDesc('Test the selected Piper voice with a sample phrase')
+        .addButton(button => {
+          button
+            .setButtonText('Test Voice')
+            .onClick(async () => {
+              const currentVoice = this.plugin.settings.voice?.ttsVoice || 'en_US-lessac-medium';
+              button.setButtonText('Testing...');
+              button.setDisabled(true);
+              
+              try {
+                // Test voice using the console command we implemented
+                if (this.plugin.voiceSystemV2?.getTTSManager()?.testVoice) {
+                  const success = await this.plugin.voiceSystemV2.getTTSManager().testVoice(
+                    currentVoice, 
+                    'Hello, this is a test of the Piper voice system.'
+                  );
+                  
+                  if (success) {
+                    new Notice(`✅ Voice test successful: ${currentVoice}`);
+                  } else {
+                    new Notice(`❌ Voice test failed: ${currentVoice}. Try a different voice or check Piper installation.`);
+                  }
+                } else {
+                  new Notice('❌ Voice system not available. Please enable voice assistant first.');
+                }
+              } catch (error) {
+                console.error('Voice test error:', error);
+                new Notice(`❌ Voice test error: ${error.message}`);
+              }
+              
+              button.setButtonText('Test Voice');
+              button.setDisabled(false);
+            });
+        });
+        
+      // List available voices button
+      new Setting(containerEl)
+        .setName('List Available Voices')
+        .setDesc('Show all available TTS voices from all engines')
+        .addButton(button => {
+          button
+            .setButtonText('List Voices')
+            .onClick(async () => {
+              button.setButtonText('Loading...');
+              button.setDisabled(true);
+              
+              try {
+                if (this.plugin.voiceSystemV2?.getTTSManager()?.listAllVoices) {
+                  await this.plugin.voiceSystemV2.getTTSManager().listAllVoices();
+                  new Notice('✅ Voice list displayed in console. Press F12 to view.');
+                } else {
+                  new Notice('❌ Voice system not available. Please enable voice assistant first.');
+                }
+              } catch (error) {
+                console.error('Voice listing error:', error);
+                new Notice(`❌ Voice listing error: ${error.message}`);
+              }
+              
+              button.setButtonText('List Voices');
+              button.setDisabled(false);
+            });
+        });
+        
+      // Piper installation help
+      const piperHelpEl = containerEl.createEl('div', { cls: 'piper-help-section' });
+      piperHelpEl.style.cssText = `
+        background: var(--background-secondary);
+        padding: 12px;
+        border-radius: 6px;
+        margin: 8px 0 16px 0;
+        border-left: 3px solid var(--text-accent);
+      `;
+      
+      piperHelpEl.createEl('strong', { text: '🔧 Piper Voice Installation' });
+      piperHelpEl.createEl('p', { 
+        text: 'If voice tests fail, ensure Piper TTS is properly installed in your Python environment:',
+        cls: 'setting-item-description'
+      });
+      
+      const codeEl = piperHelpEl.createEl('pre');
+      codeEl.style.cssText = `
+        background: var(--background-primary);
+        padding: 8px;
+        border-radius: 4px;
+        font-family: var(--font-monospace);
+        font-size: 12px;
+        margin: 8px 0;
+        overflow-x: auto;
+      `;
+      
+      codeEl.textContent = `# Install Piper TTS in your voice assistant environment:
+pip install piper-tts
+
+# Download additional voices (optional):
+# Visit: https://github.com/rhasspy/piper/releases
+# Download .onnx and .json files for desired voices`;
+
+      const voiceNote = piperHelpEl.createEl('p');
+      voiceNote.style.cssText = 'font-size: 12px; color: var(--text-muted); margin-top: 8px;';
+      voiceNote.textContent = '💡 The voice "en_US-lessac-medium" should be included with Piper by default.';
+    }
+
+    // OpenAI TTS Settings (only show when OpenAI is selected)
+    if (this.plugin.settings.voice?.ttsEngine === 'openai') {
+      // Ensure openaiTts settings are initialized
+      if (!this.plugin.settings.voice.openaiTts) {
+        this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+      }
+      containerEl.createEl('h5', { text: 'OpenAI TTS Configuration' });
+      
+      new Setting(containerEl)
+        .setName('API Base URL')
+        .setDesc('Base URL for OpenAI-compatible TTS API (e.g., OpenAI, Chatterbox, local servers)')
+        .addText(text => {
+          text
+            .setPlaceholder('https://api.openai.com/v1 or http://localhost:4123/v1')
+            .setValue(this.plugin.settings.voice?.openaiTts?.baseUrl || 'http://localhost:4123/v1')
+            .onChange(async (value) => {
+              if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+              if (!this.plugin.settings.voice.openaiTts) this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+              this.plugin.settings.voice.openaiTts.baseUrl = value;
+              await this.plugin.saveSettings();
+            });
+        });
+
+      new Setting(containerEl)
+        .setName('API Key')
+        .setDesc('API key for the TTS service (use "none" for services that don\'t require authentication)')
+        .addText(text => {
+          text
+            .setPlaceholder('Enter API key or "none"')
+            .setValue(this.plugin.settings.voice?.openaiTts?.apiKey ? '••••••••' : '')
+            .onChange(async (value) => {
+              if (value !== '••••••••' && value.trim()) {
+                if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+                if (!this.plugin.settings.voice.openaiTts) this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+                this.plugin.settings.voice.openaiTts.apiKey = value;
+                await this.plugin.saveSettings();
+              }
+            });
+          text.inputEl.type = 'password';
+        });
+
+      new Setting(containerEl)
+        .setName('TTS Model')
+        .setDesc('Model to use for text-to-speech generation')
+        .addDropdown(dropdown => {
+          dropdown
+            .addOption('tts-1', 'tts-1 (Standard)')
+            .addOption('tts-1-hd', 'tts-1-hd (High Definition)')
+            .setValue(this.plugin.settings.voice?.openaiTts?.model || 'tts-1')
+            .onChange(async (value) => {
+              if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+              if (!this.plugin.settings.voice.openaiTts) this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+              this.plugin.settings.voice.openaiTts.model = value;
+              await this.plugin.saveSettings();
+            });
+        });
+
+      new Setting(containerEl)
+        .setName('TTS Voice')
+        .setDesc('Voice to use for speech synthesis')
+        .addDropdown(dropdown => {
+          dropdown
+            .addOption('alloy', 'Alloy (Neutral)')
+            .addOption('echo', 'Echo (Male)')
+            .addOption('fable', 'Fable (Neutral)')
+            .addOption('onyx', 'Onyx (Male)')
+            .addOption('nova', 'Nova (Female)')
+            .addOption('shimmer', 'Shimmer (Female)')
+            .setValue(this.plugin.settings.voice?.openaiTts?.voice || 'alloy')
+            .onChange(async (value) => {
+              if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+              if (!this.plugin.settings.voice.openaiTts) this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+              this.plugin.settings.voice.openaiTts.voice = value;
+              await this.plugin.saveSettings();
+            });
+        });
+
+      new Setting(containerEl)
+        .setName('Response Splitting')
+        .setDesc('How to split long responses for better TTS processing')
+        .addDropdown(dropdown => {
+          dropdown
+            .addOption('none', 'None (Process as single chunk)')
+            .addOption('sentences', 'Sentences')
+            .addOption('paragraphs', 'Paragraphs (Recommended)')
+            .setValue(this.plugin.settings.voice?.openaiTts?.responseSplitting || 'paragraphs')
+            .onChange(async (value: 'none' | 'sentences' | 'paragraphs') => {
+              if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+              if (!this.plugin.settings.voice.openaiTts) this.plugin.settings.voice.openaiTts = { ...DEFAULT_SETTINGS.voice.openaiTts };
+              this.plugin.settings.voice.openaiTts.responseSplitting = value;
+              await this.plugin.saveSettings();
+            });
+        });
+    }
+
+    // ElevenLabs API Key (only show when ElevenLabs is selected)
+    if (this.plugin.settings.voice?.ttsEngine === 'elevenlabs') {
+      new Setting(containerEl)
+        .setName('ElevenLabs API Key')
+        .setDesc('API key for ElevenLabs TTS service')
+        .addText(text => {
+          text
+            .setPlaceholder('Enter API key...')
+            .setValue(this.plugin.settings.voice?.elevenlabsApiKey ? '••••••••' : '')
+            .onChange(async (value) => {
+              if (value !== '••••••••' && value.trim()) {
+                if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+                this.plugin.settings.voice.elevenlabsApiKey = value;
+                await this.plugin.saveSettings();
+              }
+            });
+          text.inputEl.type = 'password';
+        });
+    }
+
+    new Setting(containerEl)
+      .setName('Wake Word')
+      .setDesc('Phrase to activate voice commands')
+      .addText(text => {
+        text
+          .setPlaceholder('hey clippy')
+          .setValue(this.plugin.settings.voice?.wakeWord || 'hey clippy')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice) this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+            this.plugin.settings.voice.wakeWord = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Continuous Listening')
+      .setDesc('Keep listening for wake word after each command')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice.continuousMode)
+          .onChange(async (value) => {
+            this.plugin.settings.voice.continuousMode = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Voice Visualizer Configuration Section
+    this.addVoiceVisualizerSection();
+
+    // Voice system info
+    const infoEl = containerEl.createEl('div', { cls: 'clippy-voice-info' });
+    infoEl.style.cssText = `
+      background: var(--background-secondary);
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 16px;
+    `;
+    
+    const infoHeader = infoEl.createEl('h4', { text: '💡 Voice System Info' });
+    infoHeader.style.marginTop = '0';
+    
+    const infoList = infoEl.createEl('ul');
+    infoList.style.cssText = 'margin: 8px 0; padding-left: 20px;';
+    
+    infoList.createEl('li').innerHTML = '<strong>CPU Mode:</strong> Uses system CPU, more stable, works on all systems';
+    infoList.createEl('li').innerHTML = '<strong>CUDA Mode:</strong> Uses GPU acceleration, faster but requires NVIDIA GPU with CUDA';
+    infoList.createEl('li').innerHTML = '<strong>Model Size:</strong> Affects accuracy vs speed - start with "base" model';
+    infoList.createEl('li').innerHTML = '<strong>Requirements:</strong> Python environment with whisper and piper-tts installed';
+  }
+
+  /**
+   * Add voice visualizer configuration settings
+   */
+  private addVoiceVisualizerSection(): void {
+    const { containerEl } = this;
+
+    // Ensure visualizer settings are initialized
+    if (!this.plugin.settings.voice?.visualizers) {
+      if (!this.plugin.settings.voice) {
+        this.plugin.settings.voice = { ...DEFAULT_SETTINGS.voice };
+      }
+      this.plugin.settings.voice.visualizers = { ...DEFAULT_SETTINGS.voice.visualizers };
+    }
+
+    containerEl.createEl('h4', { text: '🎨 Voice Visualizers' });
+    containerEl.createEl('p', { 
+      text: 'Configure real-time audio visualizations for voice activity detection and text-to-speech.',
+      cls: 'setting-item-description'
+    });
+
+    // VAD Visualizer Settings
+    containerEl.createEl('h5', { text: '🎯 Voice Activity Detection (VAD) Visualizer' });
+
+    new Setting(containerEl)
+      .setName('Enable VAD Visualizer')
+      .setDesc('Show visual indicator for voice activity detection with confidence levels')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.enabled || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.enabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('VAD Sensitivity')
+      .setDesc('Adjust how sensitive the voice activity detection is (0.1 = very sensitive, 1.0 = less sensitive)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.1, 1.0, 0.1)
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.sensitivity || 0.7)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.sensitivity = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('VAD Indicator Size')
+      .setDesc('Size of the voice activity indicator widget')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('small', 'Small (Compact)')
+          .addOption('medium', 'Medium (Default)')
+          .addOption('large', 'Large (Prominent)')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.size || 'medium')
+          .onChange(async (value: 'small' | 'medium' | 'large') => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.size = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('VAD Position')
+      .setDesc('Where to position the voice activity indicator')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('inline', 'Inline (Next to voice button)')
+          .addOption('floating', 'Floating (Top corner)')
+          .addOption('corner', 'Corner (Screen edge)')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.position || 'inline')
+          .onChange(async (value: 'inline' | 'floating' | 'corner') => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.position = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Show Confidence Score')
+      .setDesc('Display numerical confidence percentage for voice detection')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.showConfidence || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.showConfidence = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Animation Speed')
+      .setDesc('Speed of VAD indicator animations and transitions')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('slow', 'Slow (Smooth)')
+          .addOption('normal', 'Normal (Balanced)')
+          .addOption('fast', 'Fast (Responsive)')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.animationSpeed || 'normal')
+          .onChange(async (value: 'slow' | 'normal' | 'fast') => {
+            if (!this.plugin.settings.voice?.visualizers?.vad) return;
+            this.plugin.settings.voice.visualizers.vad.animationSpeed = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // VAD Color Configuration
+    containerEl.createEl('h6', { text: 'VAD Colors' });
+    
+    new Setting(containerEl)
+      .setName('Silent State Color')
+      .setDesc('Color when no voice activity is detected')
+      .addText(text => {
+        text
+          .setPlaceholder('#6b7280')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.colors?.silent || '#6b7280')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad?.colors) return;
+            this.plugin.settings.voice.visualizers.vad.colors.silent = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Speech State Color')
+      .setDesc('Color when speech is detected')
+      .addText(text => {
+        text
+          .setPlaceholder('#10b981')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.colors?.speech || '#10b981')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad?.colors) return;
+            this.plugin.settings.voice.visualizers.vad.colors.speech = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Noise State Color')
+      .setDesc('Color when noise/uncertain audio is detected')
+      .addText(text => {
+        text
+          .setPlaceholder('#f59e0b')
+          .setValue(this.plugin.settings.voice?.visualizers?.vad?.colors?.noise || '#f59e0b')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.vad?.colors) return;
+            this.plugin.settings.voice.visualizers.vad.colors.noise = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // TTS Spectrum Visualizer Settings
+    containerEl.createEl('h5', { text: '🎵 Text-to-Speech (TTS) Spectrum Visualizer' });
+
+    new Setting(containerEl)
+      .setName('Enable TTS Spectrum')
+      .setDesc('Show real-time frequency spectrum during TTS playback')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.enabled || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.enabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Spectrum Bars')
+      .setDesc('Number of frequency bars in the spectrum display (more bars = finer detail)')
+      .addSlider(slider => {
+        slider
+          .setLimits(8, 48, 4)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.spectrumBars || 24)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.spectrumBars = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Spectrum Height')
+      .setDesc('Height of the spectrum visualizer in pixels')
+      .addSlider(slider => {
+        slider
+          .setLimits(30, 150, 10)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.height || 50)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.height = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Audio-Reactive Border')
+      .setDesc('Enable pulsing border around messages that syncs with TTS volume')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.showBorder || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.showBorder = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Border Pulse Intensity')
+      .setDesc('How intense the audio-reactive border pulsing is (0.1 = subtle, 2.0 = dramatic)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.1, 2.0, 0.1)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.borderIntensity || 1.0)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.borderIntensity = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Glow Effect')
+      .setDesc('Enable glow effect during loud speech segments')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.showGlow || false)
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.showGlow = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Glow Threshold')
+      .setDesc('Volume level required to trigger glow effect (0.0 = always, 1.0 = only loudest)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.0, 1.0, 0.1)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.glowThreshold || 0.7)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.glowThreshold = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // TTS Color Configuration
+    containerEl.createEl('h6', { text: 'TTS Spectrum Colors' });
+    
+    new Setting(containerEl)
+      .setName('Primary Color')
+      .setDesc('Main spectrum color (use "auto" for theme accent color)')
+      .addText(text => {
+        text
+          .setPlaceholder('auto or #hex')
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.colors?.primary || 'auto')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts?.colors) return;
+            this.plugin.settings.voice.visualizers.tts.colors.primary = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Secondary Color')
+      .setDesc('Secondary spectrum color for gradients')
+      .addText(text => {
+        text
+          .setPlaceholder('auto or #hex')
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.colors?.secondary || 'auto')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts?.colors) return;
+            this.plugin.settings.voice.visualizers.tts.colors.secondary = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Background Color')
+      .setDesc('Spectrum background color')
+      .addText(text => {
+        text
+          .setPlaceholder('auto or #hex')
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.colors?.background || 'auto')
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts?.colors) return;
+            this.plugin.settings.voice.visualizers.tts.colors.background = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Advanced TTS Settings
+    containerEl.createEl('h6', { text: 'Advanced TTS Audio Processing' });
+
+    new Setting(containerEl)
+      .setName('Frequency Smoothing')
+      .setDesc('How much to smooth frequency changes (0.0 = jagged, 1.0 = very smooth)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.0, 1.0, 0.05)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.smoothing || 0.85)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.smoothing = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Minimum Decibels')
+      .setDesc('Minimum audio level for spectrum analysis (lower = more sensitive to quiet sounds)')
+      .addSlider(slider => {
+        slider
+          .setLimits(-120, -30, 10)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.minDecibels || -90)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.minDecibels = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Maximum Decibels')
+      .setDesc('Maximum audio level for spectrum analysis (higher = less sensitive to loud sounds)')
+      .addSlider(slider => {
+        slider
+          .setLimits(-30, 0, 5)
+          .setValue(this.plugin.settings.voice?.visualizers?.tts?.maxDecibels || -10)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            if (!this.plugin.settings.voice?.visualizers?.tts) return;
+            this.plugin.settings.voice.visualizers.tts.maxDecibels = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Visualizer Help Section
+    const visualizerHelpEl = containerEl.createEl('div', { cls: 'visualizer-help-section' });
+    visualizerHelpEl.style.cssText = `
+      background: var(--background-secondary);
+      padding: 12px;
+      border-radius: 6px;
+      margin: 16px 0;
+      border-left: 3px solid var(--text-accent);
+    `;
+    
+    visualizerHelpEl.createEl('strong', { text: '🎨 Visualizer Tips' });
+    visualizerHelpEl.createEl('p', { 
+      text: 'Voice visualizers provide real-time feedback for speech processing:',
+      cls: 'setting-item-description'
+    });
+    
+    const tipsList = visualizerHelpEl.createEl('ul');
+    tipsList.style.cssText = 'margin: 8px 0; padding-left: 20px; font-size: 14px;';
+    
+    tipsList.createEl('li').innerHTML = '<strong>VAD Indicator:</strong> Shows when the system detects speech vs silence or noise';
+    tipsList.createEl('li').innerHTML = '<strong>TTS Spectrum:</strong> Displays frequency analysis of AI voice responses in real-time';
+    tipsList.createEl('li').innerHTML = '<strong>Audio-Reactive Border:</strong> Chat messages pulse with TTS volume for visual feedback';
+    tipsList.createEl('li').innerHTML = '<strong>Performance:</strong> Visualizers use optimized rendering for smooth 60 FPS animation';
+
+    const colorNote = visualizerHelpEl.createEl('p');
+    colorNote.style.cssText = 'font-size: 12px; color: var(--text-muted); margin-top: 8px;';
+    colorNote.textContent = '💡 Use "auto" for colors to automatically match your Obsidian theme. Use hex codes like #ff0000 for custom colors.';
+  }
+
   private addTestSection(): void {
     const { containerEl } = this;
 
@@ -1029,11 +2087,164 @@ export class SettingsManager {
   }
 
   /**
-   * Load settings with defaults
+   * Load settings with defaults and migration
    */
   async loadSettings(): Promise<ClippySettings> {
     const data = await this.plugin.loadData();
-    return { ...DEFAULT_SETTINGS, ...data };
+    const mergedSettings = this.deepMerge(DEFAULT_SETTINGS, data || {});
+    
+    // Run settings migration for new features
+    const migratedSettings = this.migrateSettings(mergedSettings, data);
+    
+    // Save migrated settings if migration occurred
+    if (this.needsMigration(data)) {
+      console.log('[Settings Manager] Settings migrated to include new visualizer configs');
+      await this.plugin.saveData(migratedSettings);
+    }
+    
+    return migratedSettings;
+  }
+
+  /**
+   * Deep merge settings to handle nested objects properly
+   */
+  private deepMerge(target: any, source: any): any {
+    const result = { ...target };
+    
+    for (const key in source) {
+      if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        result[key] = this.deepMerge(target[key] || {}, source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Migrate settings for new features and backwards compatibility
+   */
+  private migrateSettings(settings: ClippySettings, originalData: any): ClippySettings {
+    const migrated = { ...settings };
+    const currentVersion = this.getSettingsVersion(originalData);
+
+    console.log(`[Settings Manager] Current settings version: ${currentVersion}, target version: ${DEFAULT_SETTINGS.version}`);
+
+    // Migration from v1 to v2: Add voice visualizer settings
+    if (currentVersion < 2) {
+      console.log('[Settings Manager] Migrating from v1 to v2: Adding voice visualizer configuration');
+      
+      // Add voice settings if missing entirely
+      if (!migrated.voice) {
+        console.log('[Settings Manager] Adding complete voice configuration for first-time setup');
+        migrated.voice = { ...DEFAULT_SETTINGS.voice };
+      } else {
+        // Add visualizer settings to existing voice configuration
+        if (!migrated.voice.visualizers) {
+          console.log('[Settings Manager] Adding voice visualizer configuration to existing voice settings');
+          migrated.voice.visualizers = {
+            vad: {
+              enabled: true,
+              sensitivity: 0.7,
+              size: 'medium',
+              position: 'inline',
+              showConfidence: true,
+              animationSpeed: 'normal',
+              colors: {
+                silent: '#6b7280',
+                speech: '#10b981', 
+                noise: '#f59e0b'
+              }
+            },
+            tts: {
+              enabled: true,
+              spectrumBars: 24,
+              height: 50,
+              showBorder: true,
+              borderIntensity: 1.0,
+              showGlow: true,
+              glowThreshold: 0.7,
+              colors: {
+                primary: 'auto',
+                secondary: 'auto',
+                background: 'auto'
+              },
+              smoothing: 0.85,
+              minDecibels: -90,
+              maxDecibels: -10
+            }
+          };
+        }
+      }
+    }
+
+    // Ensure complete visualizer settings even for partial configurations
+    if (migrated.voice && migrated.voice.visualizers) {
+      if (!migrated.voice.visualizers.vad) {
+        console.log('[Settings Manager] Adding missing VAD visualizer configuration');
+        migrated.voice.visualizers.vad = DEFAULT_SETTINGS.voice.visualizers.vad;
+      }
+      if (!migrated.voice.visualizers.tts) {
+        console.log('[Settings Manager] Adding missing TTS visualizer configuration');
+        migrated.voice.visualizers.tts = DEFAULT_SETTINGS.voice.visualizers.tts;
+      }
+    }
+
+    // Update to current version
+    migrated.version = DEFAULT_SETTINGS.version;
+
+    // Future migrations can be added here
+    // Example:
+    // if (currentVersion < 3) {
+    //   console.log('[Settings Manager] Migrating from v2 to v3: Adding new feature X');
+    //   // Migration logic for v3 features
+    // }
+
+    return migrated;
+  }
+
+  /**
+   * Check if settings need migration
+   */
+  private needsMigration(originalData: any): boolean {
+    if (!originalData) return false;
+    
+    const currentVersion = this.getSettingsVersion(originalData);
+    const targetVersion = DEFAULT_SETTINGS.version || 2;
+    
+    // Need migration if version is outdated
+    if (currentVersion < targetVersion) {
+      return true;
+    }
+    
+    // Additional checks for missing configurations (for safety)
+    if (originalData.voice && !originalData.voice.visualizers) {
+      return true;
+    }
+    
+    // Check for incomplete visualizer settings
+    if (originalData.voice?.visualizers) {
+      const hasVAD = originalData.voice.visualizers.vad && 
+                    originalData.voice.visualizers.vad.colors &&
+                    typeof originalData.voice.visualizers.vad.sensitivity === 'number';
+      const hasTTS = originalData.voice.visualizers.tts && 
+                    originalData.voice.visualizers.tts.colors &&
+                    typeof originalData.voice.visualizers.tts.spectrumBars === 'number';
+      
+      if (!hasVAD || !hasTTS) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Get settings version for future migrations
+   */
+  private getSettingsVersion(data: any): number {
+    return data?.version || 1;
   }
 
   /**
