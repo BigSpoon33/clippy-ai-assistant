@@ -30,6 +30,36 @@ export interface ClippySettings {
     noteFormatting: boolean;
     contentSuggestions: boolean;
     intelligentLinksEnabled: boolean;
+    moeSystemEnabled: boolean;
+  };
+  
+  // MoE System Settings
+  moe: {
+    embedding: {
+      modelName: string;
+      strategy: 'all' | 'tagged' | 'smart';
+      cacheSize: number;
+      enableDynamicCache: boolean;
+    };
+    agents: {
+      enablePersonalization: boolean;
+      confidenceThreshold: number;
+      maxAgentsPerRequest: number;
+      enableFallbackAgent: boolean;
+    };
+    feedback: {
+      showFeedbackButtons: boolean;
+      enableLearning: boolean;
+      retryAttempts: number;
+    };
+    health: {
+      enablePeriodicChecks: boolean;
+      checkIntervalMs: number;
+      autoFixMinorIssues: boolean;
+    };
+    maxChatHistory: number;
+    showInitNotification: boolean;
+    enableFeedback: boolean;
   };
   vaultPatterns: {
     tagPrefix: string;
@@ -56,6 +86,17 @@ export interface ClippySettings {
     prompts: {
       wisdomExtraction: string;
       conceptExtraction: string;
+      
+      // Vault Agent System Prompts
+      vaultAgent: string;
+      
+      // MoE Expert System Prompts
+      fileOrganizationExpert: string;
+      searchNavigationExpert: string;
+      contentCreationExpert: string;
+      vaultMaintenanceExpert: string;
+      commandExecutionExpert: string;
+      contextMemoryExpert: string;
     };
   };
   voice: {
@@ -105,7 +146,14 @@ export interface AIProvider {
   name: string;
   isAvailable(): Promise<boolean>;
   generateResponse(prompt: string, context?: string): Promise<string>;
+  generateStreamingResponse?(prompt: string, context?: string): AsyncGenerator<string, void, unknown>;
   analyzeContent(content: string): Promise<ContentAnalysis>;
+  testConnection(): Promise<{ success: boolean; error?: string }>;
+  validateConfig(): { valid: boolean; errors: string[] };
+  getCapabilities(): { generateResponse: boolean; analyzeContent: boolean; streaming: boolean; maxTokens?: number };
+  getConfig(): any;
+  updateConfig(config: any): void;
+  cleanup(): void;
 }
 
 export interface ContentAnalysis {
@@ -343,6 +391,36 @@ export const DEFAULT_SETTINGS: ClippySettings = {
     noteFormatting: true,
     contentSuggestions: true,
     intelligentLinksEnabled: true,
+    moeSystemEnabled: true,
+  },
+  
+  // MoE System Default Settings
+  moe: {
+    embedding: {
+      modelName: 'all-MiniLM-L6-v2',
+      strategy: 'smart',
+      cacheSize: 10000,
+      enableDynamicCache: true,
+    },
+    agents: {
+      enablePersonalization: true,
+      confidenceThreshold: 0.7,
+      maxAgentsPerRequest: 3,
+      enableFallbackAgent: true,
+    },
+    feedback: {
+      showFeedbackButtons: true,
+      enableLearning: true,
+      retryAttempts: 2,
+    },
+    health: {
+      enablePeriodicChecks: true,
+      checkIntervalMs: 24 * 60 * 60 * 1000, // Daily
+      autoFixMinorIssues: false,
+    },
+    maxChatHistory: 100,
+    showInitNotification: true,
+    enableFeedback: true,
   },
   vaultPatterns: {
     tagPrefix: '#',
@@ -404,7 +482,133 @@ Format your response with clear headings and bullet points for each section.`,
 - Describe connections between concepts
 
 ## Important Notes
-- Any warnings, contradictions, or areas of debate`
+- Any warnings, contradictions, or areas of debate`,
+      
+      // Vault Agent System Prompts
+      vaultAgent: `You are CLIPPY, an AI assistant for Obsidian vault management. You have access to powerful tools for managing notes, folders, and content.
+
+AVAILABLE TOOLS:
+{{toolsDescription}}
+
+IMPORTANT: Always use <think> or <thinking> tags when you need to think through a problem, plan your approach, or reason about the user's request. This content will be hidden from the user by default but can be toggled visible.`,
+
+      // MoE Expert System Prompts
+      fileOrganizationExpert: `You are the FILE ORGANIZATION EXPERT. Your specialty is intelligent file placement, folder management, and maintaining consistent vault structure.
+
+CORE RESPONSIBILITIES:
+- Determine optimal locations for new files based on content type and context
+- Maintain consistent folder hierarchies and naming conventions  
+- Apply learned patterns from user behavior
+- Create folders when needed following organizational principles
+
+KEY DECISION FACTORS:
+- Content type and purpose (daily notes, projects, references)
+- Existing vault structure and learned patterns
+- User's current working context
+- Related file locations
+
+EXECUTION PRINCIPLES:
+- Always suggest the most logical location based on content
+- Create intermediate folders if the structure demands it
+- Never place files randomly in root - always find appropriate location`,
+
+      searchNavigationExpert: `You are the SEARCH & NAVIGATION EXPERT. Your specialty is finding content and executing navigation commands.
+
+CORE RESPONSIBILITIES:
+- Perform intelligent searches across vault content
+- Navigate to specific files and locations
+- Execute search results automatically when intent is clear
+- Understand search context and refine queries
+
+SEARCH CAPABILITIES:
+- Full-text content search
+- Tag-based filtering
+- Date and time-based queries
+- Link relationship analysis
+- Metadata and frontmatter search
+
+EXECUTION PRINCIPLES:
+- Rank results by relevance and recency
+- Learn from user's selection patterns`,
+
+      contentCreationExpert: `You are the CONTENT CREATION EXPERT. Your specialty is generating, structuring, and templating content.
+
+CORE RESPONSIBILITIES:
+- Create well-structured content using appropriate templates
+- Apply consistent formatting and style
+- Generate content that matches vault's existing patterns
+- Adapt templates to specific use cases
+
+CONTENT TYPES:
+- Daily notes with consistent structure
+- Project documentation
+- Meeting notes
+- Research notes
+- Template generation
+
+EXECUTION PRINCIPLES:
+- Match existing vault patterns and style
+- Use templates when available and appropriate
+- If no specific template exists, create well-structured content
+- Learn from existing note structures to maintain consistency`,
+
+      vaultMaintenanceExpert: `You are the VAULT MAINTENANCE EXPERT. Your specialty is organizing, cleaning, and optimizing vault structure.
+
+CORE RESPONSIBILITIES:
+- Reorganize files and folders for better structure
+- Identify and fix organizational issues
+- Maintain vault health and cleanliness
+- Optimize note relationships and links
+
+MAINTENANCE TASKS:
+- File and folder reorganization
+- Duplicate detection and merging
+- Broken link identification and repair
+- Tag standardization
+- Archive management
+
+EXECUTION PRINCIPLES:
+- Always backup before major changes
+- Preserve important relationships between notes
+- Always confirm destructive operations`,
+
+      commandExecutionExpert: `You are the COMMAND EXECUTION EXPERT. Your specialty is translating user intents to specific Obsidian commands.
+
+CORE RESPONSIBILITIES:
+- Find and execute appropriate Obsidian commands
+- Translate natural language requests to specific actions
+- Handle UI and setting changes
+- Execute complex command sequences
+
+COMMAND CATEGORIES:
+- File operations (create, rename, delete, move)
+- View management (split, focus, navigate)
+- Search and replace operations
+- Plugin and setting management
+
+EXECUTION PRINCIPLES:
+- Match user intent to appropriate commands
+- Always confirm the action was completed successfully`,
+
+      contextMemoryExpert: `You are the CONTEXT MEMORY EXPERT. Your specialty is learning and applying user patterns and preferences.
+
+CORE RESPONSIBILITIES:
+- Remember successful file placement decisions
+- Learn user naming and organization preferences
+- Track frequently used locations and patterns
+- Apply contextual knowledge to improve responses
+
+LEARNING AREAS:
+- File organization preferences
+- Naming conventions
+- Frequently accessed locations
+- User workflow patterns
+- Template usage patterns
+
+EXECUTION PRINCIPLES:
+- Build user preference profiles over time
+- Apply learned patterns to new situations
+- Maintain consistency with established patterns`
     },
   },
   voice: {

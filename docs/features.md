@@ -1,0 +1,5 @@
+- [ ] Fix bug in login system
+- [ ] Improve performance on mobile
+- [ ] Update outdated dependencies
+- [ ] Enhance user onboarding experience
+- [ ] Add dark mode support

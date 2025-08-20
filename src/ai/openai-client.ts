@@ -247,6 +247,23 @@ Always respond with valid JSON. Focus on actionable insights for note organizati
   }
 
   /**
+   * Get provider capabilities
+   */
+  getCapabilities(): {
+    generateResponse: boolean;
+    analyzeContent: boolean;
+    streaming: boolean;
+    maxTokens?: number;
+  } {
+    return {
+      generateResponse: true,
+      analyzeContent: true,
+      streaming: false, // OpenAI streaming not implemented yet
+      maxTokens: 4000
+    };
+  }
+
+  /**
    * Validate the OpenAI configuration
    */
   validateConfig(): { valid: boolean; errors: string[] } {

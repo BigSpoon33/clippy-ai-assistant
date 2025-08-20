@@ -27,6 +27,9 @@
     "src/voice-v2/integration-example.ts",
     "src/voice-v2/voice-config.ts",
     "src/voice-v2/types/voice-types.ts",
-    "src/voice-v2/index.ts"
+    "src/voice-v2/index.ts",
+    "tests/**/*",
+    "jest.config.js",
+    "jest.config.simple.js"
   ]
 }

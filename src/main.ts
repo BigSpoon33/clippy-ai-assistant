@@ -30,6 +30,9 @@ import { SimilarityEngine } from './semantic/similarity-engine';
 // Voice Assistant System imports
 import { LocalVoiceIntegration } from './voice-v2/local-voice-integration';
 
+// MoE System imports  
+import { SimpleMoEOrchestrator } from './simple-moe';
+
 export default class ClippyPlugin extends Plugin {
   settings: ClippySettings;
   settingsManager: SettingsManager;
@@ -51,6 +54,9 @@ export default class ClippyPlugin extends Plugin {
   
   // Voice Assistant System (Local Whisper + Piper)
   public voiceSystemV2: LocalVoiceIntegration | null = null;
+  
+  // MoE System
+  private moeOrchestrator: SimpleMoEOrchestrator | null = null;
 
   async onload() {
     console.log('CLIPPY AI Assistant: Loading plugin...');
@@ -77,6 +83,12 @@ export default class ClippyPlugin extends Plugin {
     if (this.voiceSystemV2) {
       await this.voiceSystemV2.cleanup();
       this.voiceSystemV2 = null;
+    }
+    
+    // Clean up MoE system
+    if (this.moeOrchestrator) {
+      // MoE system cleanup if needed
+      this.moeOrchestrator = null;
     }
     
     // Clear any caches
@@ -137,6 +149,11 @@ export default class ClippyPlugin extends Plugin {
         
         // Initialize local voice assistant system
         await this.initializeVoiceSystemV2();
+        
+        // Initialize MoE system if enabled
+        if (this.settings.features.moeSystemEnabled) {
+          await this.initializeMoESystem();
+        }
 
         // Initialize command handlers
         this.commandHandlers = new CommandHandlers(this);
@@ -246,6 +263,27 @@ export default class ClippyPlugin extends Plugin {
     } catch (error) {
       console.error('CLIPPY: Voice System v2 initialization failed:', error);
       new Notice('Voice System v2 initialization failed - check console for details');
+    }
+  }
+
+  /**
+   * Initialize the MoE system
+   * 
+   * Sets up simple mixture of experts for intelligent assistance
+   */
+  private async initializeMoESystem(): Promise<void> {
+    try {
+      console.log('CLIPPY: Initializing Simple MoE System...');
+      
+      // Initialize simple MoE orchestrator
+      this.moeOrchestrator = new SimpleMoEOrchestrator(this);
+      await this.moeOrchestrator.initialize();
+      
+      console.log('CLIPPY: Simple MoE System initialized successfully');
+      
+    } catch (error) {
+      console.error('CLIPPY: Simple MoE System initialization failed:', error);
+      new Notice('Simple MoE System initialization failed - check console for details', 5000);
     }
   }
 

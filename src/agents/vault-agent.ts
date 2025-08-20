@@ -6,6 +6,7 @@
 import { App, TFile, Vault, MetadataCache, normalizePath, TFolder, MarkdownView } from 'obsidian';
 import { ClippySettings } from '../types';
 import { ProviderFactory } from '../ai/provider-factory';
+import { VaultMoEOrchestrator } from './moe-orchestrator';
 
 export interface VaultTool {
   name: string;
@@ -23,8 +24,14 @@ export interface VaultTool {
 export interface AgentContext {
   currentNote?: TFile;
   workingDirectory?: string;
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>;
   sessionId: string;
+  recentlyMentionedFiles: Array<{ path: string; name: string; timestamp: Date; action: 'created' | 'mentioned' | 'opened' }>;
+  activeContext: {
+    lastCreatedFile?: string;
+    lastMentionedFile?: string;
+    currentWorkingFile?: string;
+  };
 }
 
 /**
@@ -36,12 +43,14 @@ export class VaultAgent {
   private tools: Map<string, VaultTool> = new Map();
   private vault: Vault;
   private metadataCache: MetadataCache;
+  private moeOrchestrator: VaultMoEOrchestrator;
 
   constructor(app: App, settings: ClippySettings) {
     this.app = app;
     this.settings = settings;
     this.vault = app.vault;
     this.metadataCache = app.metadataCache;
+    this.moeOrchestrator = new VaultMoEOrchestrator(app, settings);
     this.initializeTools();
   }
 
@@ -272,11 +281,269 @@ export class VaultAgent {
   }
 
   /**
-   * Process user message with AI and execute any requested vault operations
+   * Process user message with MoE-powered AI and execute vault operations
    */
   async processMessage(message: string, context: AgentContext): Promise<string> {
     try {
+      if (this.isMoEEnabled()) {
+        console.log(`🧠 MoE ACTIVE - Processing: "${message}"`);
+        console.log(`🧠 MoE Status:`, this.getMoEStatus());
+        
+        // Route request through MoE orchestrator
+        const moeResponse = await this.moeOrchestrator.routeRequest(message, context);
+        console.log(`🎯 MoE Expert selected: ${moeResponse.expert} (confidence: ${(moeResponse.confidence * 100).toFixed(1)}%)`);
+        console.log(`🔧 MoE Execution plan: ${moeResponse.executionPlan.length} steps`);
+      } else {
+        console.log(`❌ MoE DISABLED - Using standard processing for: "${message}"`);
+      }
+      
+      // Route request through MoE orchestrator
+      const moeResponse = await this.moeOrchestrator.routeRequest(message, context);
+      
       const aiProvider = await ProviderFactory.createProvider(this.settings);
+      
+      // Create tools description for the expert
+      const toolsDescription = this.getAvailableTools()
+        .map(tool => {
+          const params = Object.entries(tool.parameters)
+            .map(([name, param]) => `${name}: ${param.type} - ${param.description}${param.required ? ' (required)' : ''}`)
+            .join(', ');
+          return `${tool.name}(${params}) - ${tool.description}`;
+        })
+        .join('\n');
+
+      // Use MoE-generated expert system prompt with customizable base
+      const systemPrompt = `${moeResponse.systemPrompt}
+
+AVAILABLE TOOLS:
+${toolsDescription}
+
+TOOL EXECUTION INSTRUCTIONS:
+- Format tool calls as: TOOL_CALL: tool_name({"param": "value"})
+- Execute ALL steps in the execution plan to complete the task fully
+- Chain multiple tool operations to complete complex tasks
+- Always confirm destructive operations before executing
+- Use <think> tags for reasoning that should be hidden from user
+
+COMMAND PALETTE INTEGRATION:
+- Use find_command({"intent": "description"}) for Obsidian commands
+- find_command auto-executes commands with >=90% confidence
+- If auto-executed, acknowledge with: "Done! [action phrase]"
+- If recommendations shown, use execute_command to run selected option
+
+User message: ${message}`;
+
+      // Get AI response from expert
+      const response = await aiProvider.generateResponse(message, systemPrompt);
+      
+      // Execute planned actions with enhanced chaining
+      let processedResponse = await this.executeToolChain(response, context, moeResponse.executionPlan);
+      
+      // Learn from successful execution
+      if (!processedResponse.includes('❌')) {
+        this.learnFromExecution(message, moeResponse, context);
+      }
+
+      console.log(`✅ MoE execution completed by ${moeResponse.expert}`);
+      return processedResponse;
+
+    } catch (error) {
+      console.error('VaultAgent MoE: Error processing message:', error);
+      return `Sorry, I encountered an error processing your request: ${error.message}`;
+    }
+  }
+
+  /**
+   * Execute tool chain with enhanced planning and completion tracking
+   */
+  private async executeToolChain(response: string, context: AgentContext, executionPlan: any[]): Promise<string> {
+    const toolCallRegex = /TOOL_CALL:\s*(\w+)\s*\(\s*({.*?})\s*\)/g;
+    let match;
+    let processedResponse = response;
+    let executedSteps = 0;
+    
+    while ((match = toolCallRegex.exec(response)) !== null) {
+      const [fullMatch, toolName, argsString] = match;
+      
+      try {
+        const args = JSON.parse(argsString);
+        console.log(`🔧 Executing tool: ${toolName} with args:`, args);
+        
+        const result = await this.executeTool(toolName, args, context);
+        executedSteps++;
+        
+        // Enhanced result processing for chaining
+        const resultText = this.formatToolResult(result, toolName);
+        processedResponse = processedResponse.replace(fullMatch, `\n✅ ${resultText}\n`);
+        
+        // Update context based on tool execution
+        this.updateContextFromResult(context, toolName, args, result);
+        
+      } catch (error) {
+        console.error(`❌ Tool ${toolName} failed:`, error);
+        processedResponse = processedResponse.replace(fullMatch, `\n❌ Error executing ${toolName}: ${error.message}\n`);
+      }
+    }
+    
+    // Check if execution plan was completed
+    if (executionPlan.length > 0 && executedSteps === 0) {
+      console.warn('⚠️ No tools were executed despite having an execution plan');
+      processedResponse += '\n\n⚠️ Note: No automatic actions were taken. You may need to be more specific about what you want me to do.';
+    } else if (executedSteps > 0) {
+      console.log(`✅ Executed ${executedSteps} tool calls successfully`);
+    }
+    
+    return processedResponse;
+  }
+
+  /**
+   * Format tool result for better user feedback
+   */
+  private formatToolResult(result: any, toolName: string): string {
+    if (typeof result === 'string') {
+      return `${toolName}: ${result}`;
+    } else if (result && typeof result === 'object') {
+      if (result.success !== undefined) {
+        return result.success ? 
+          `${toolName}: ${result.message || 'Success'}` : 
+          `${toolName} failed: ${result.message || 'Unknown error'}`;
+      }
+      return `${toolName}: ${JSON.stringify(result, null, 2)}`;
+    }
+    return `${toolName}: Completed`;
+  }
+
+  /**
+   * Update context based on successful tool execution
+   */
+  private updateContextFromResult(context: AgentContext, toolName: string, args: any, result: any): void {
+    switch (toolName) {
+      case 'create_note':
+        if (result && result.path) {
+          console.log(`📝 Created note at: ${result.path}`);
+          // Update working directory if note was created in a specific folder
+          const folder = result.path.substring(0, result.path.lastIndexOf('/'));
+          if (folder && folder !== context.workingDirectory) {
+            context.workingDirectory = folder;
+          }
+        }
+        break;
+      case 'open_note':
+        if (result && result.file) {
+          context.currentNote = result.file;
+          console.log(`📖 Opened note: ${result.file.name}`);
+        }
+        break;
+      case 'search_notes':
+        console.log(`🔍 Search completed: ${Array.isArray(result) ? result.length : 0} results`);
+        break;
+    }
+  }
+
+  /**
+   * Learn from successful execution to improve future decisions
+   */
+  private learnFromExecution(message: string, moeResponse: any, context: AgentContext): void {
+    console.log(`📚 Learning from successful execution by ${moeResponse.expert}`);
+    
+    // Extract successful patterns
+    if (message.toLowerCase().includes('create') && context.workingDirectory) {
+      // Learn folder placement patterns
+      const contentType = this.extractContentType(message);
+      this.moeOrchestrator.recordSuccessfulAction('create_note', {
+        contentType,
+        folder: context.workingDirectory
+      }, 'success');
+    }
+  }
+
+  /**
+   * Extract content type from user message for learning
+   */
+  private extractContentType(message: string): string {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('daily') || lowerMessage.includes('journal')) return 'daily';
+    if (lowerMessage.includes('meeting') || lowerMessage.includes('standup')) return 'meeting';  
+    if (lowerMessage.includes('project')) return 'project';
+    if (lowerMessage.includes('template')) return 'template';
+    if (lowerMessage.includes('note')) return 'note';
+    
+    return 'generic';
+  }
+
+  /**
+   * Extract thinking content from response and return both thinking and clean response
+   */
+  private extractThinkingContent(response: string): { thinking: string[], cleanResponse: string } {
+    const thinking: string[] = [];
+    let cleanResponse = response;
+    
+    // Extract all thinking blocks (both <thinking> and <think> formats)
+    const thinkingRegex = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/g;
+    let match;
+    
+    while ((match = thinkingRegex.exec(response)) !== null) {
+      thinking.push(match[1].trim());
+    }
+    
+    // Remove thinking blocks from the clean response and clean up extra whitespace
+    cleanResponse = cleanResponse.replace(thinkingRegex, '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+    
+    return { thinking, cleanResponse };
+  }
+
+  /**
+   * Process user message with streaming AI response and execute vault operations
+   */
+  async* processMessageStreaming(message: string, context: AgentContext): AsyncGenerator<{type: 'text' | 'tool_result' | 'thinking', content: string}, void, unknown> {
+    try {
+      console.log('[VaultAgent] Starting streaming message processing');
+      const aiProvider = await ProviderFactory.createProvider(this.settings);
+      console.log('[VaultAgent] AI Provider created:', aiProvider.name, 'Streaming support:', !!aiProvider.generateStreamingResponse);
+      
+      // Check if provider supports streaming
+      if (!aiProvider.generateStreamingResponse) {
+        console.log('[VaultAgent] Provider does not support streaming, simulating streaming with non-streaming response');
+        if (this.isMoEEnabled()) {
+          console.log('🧠 MoE ACTIVE in streaming fallback mode');
+        }
+        // Get the complete response
+        const response = await this.processMessage(message, context);
+        
+        // First, extract thinking content from the complete response
+        const { thinking, cleanResponse } = this.extractThinkingContent(response);
+        
+        // Yield thinking sections first
+        thinking.forEach(thinkingContent => {
+          console.log('[VaultAgent] Yielding thinking content in simulated streaming');
+        });
+        
+        for (const thinkingContent of thinking) {
+          yield { type: 'thinking', content: thinkingContent };
+          await new Promise(resolve => setTimeout(resolve, 100)); // Brief pause
+        }
+        
+        // Then simulate streaming for the clean response
+        if (cleanResponse.trim()) {
+          const words = cleanResponse.split(' ');
+          let currentChunk = '';
+          
+          for (let i = 0; i < words.length; i++) {
+            currentChunk += (i > 0 ? ' ' : '') + words[i];
+            
+            // Yield chunks of 3-5 words to simulate streaming
+            if ((i + 1) % 4 === 0 || i === words.length - 1) {
+              // For simulated streaming, we yield incremental chunks (next words to add)
+              yield { type: 'text', content: currentChunk };
+              currentChunk = '';
+              // Small delay to make the streaming visible
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+          }
+        }
+        return;
+      }
       
       // Create system prompt with available tools
       const toolsDescription = this.getAvailableTools()
@@ -288,36 +555,8 @@ export class VaultAgent {
         })
         .join('\n');
 
-      const systemPrompt = `You are CLIPPY, an AI assistant for Obsidian vault management. You have access to powerful tools for managing notes, folders, and content.
-
-AVAILABLE TOOLS:
-${toolsDescription}
-
-INSTRUCTIONS:
-- When a user asks you to perform vault operations, use the appropriate tools
-- Always confirm destructive operations (delete, rename) before executing
-- Provide helpful responses explaining what you did
-- If you need to use a tool, describe what you're going to do, then execute it
-- You can chain multiple tool operations to complete complex tasks
-- Format tool calls as: TOOL_CALL: tool_name({"param": "value"})
-
-COMMAND PALETTE INTELLIGENCE:
-- When users ask to perform actions but you're unsure which Obsidian command to use, ALWAYS use find_command first
-- Use find_command({"intent": "description of what user wants"}) to get intelligent recommendations
-- The find_command tool will automatically execute commands with >=90% confidence match
-- If a command is auto-executed, find_command will return a simple action phrase like "Cycling between light mode styles"
-- If no high-confidence match is found, it will show ranked recommendations for you to choose from
-- Only use execute_command manually if find_command shows recommendations instead of auto-executing
-
-AUTO-EXECUTION BEHAVIOR:
-- For requests like "toggle light mode" → find_command will auto-execute the best match (>=90%) and return "Toggling light mode"
-- For ambiguous requests → find_command will show ranked options for manual selection
-- When find_command auto-executes, simply acknowledge the action: "Done! [action phrase from find_command]"
-
-EXAMPLES:
-- User: "toggle dark mode" → TOOL_CALL: find_command({"intent": "toggle dark mode"}) → Response: "Done! Toggling dark mode"
-- User: "split the window vertically" → TOOL_CALL: find_command({"intent": "split window vertically"}) → Response: "Done! Splitting window vertically"  
-- User: "open command palette" → TOOL_CALL: find_command({"intent": "command palette"}) → Response: "Done! Opening command palette"
+      // Use customizable system prompt from settings with context
+      const systemPrompt = this.settings.research.prompts.vaultAgent.replace('{{toolsDescription}}', toolsDescription) + `
 
 CURRENT CONTEXT:
 - Vault contains ${this.vault.getMarkdownFiles().length} notes
@@ -326,35 +565,115 @@ ${context.currentNote ? `- Currently viewing: ${context.currentNote.name}` : ''}
 
 User message: ${message}`;
 
-      // Get AI response
-      const response = await aiProvider.generateResponse(message, systemPrompt);
+      // Get streaming AI response
+      console.log('[VaultAgent] Starting streaming response generation');
+      let fullResponse = '';
+      let currentThinkingContent = '';
+      let isInThinking = false;
+      let chunkCount = 0;
       
-      // Parse and execute any tool calls from the response
+      for await (const chunk of aiProvider.generateStreamingResponse(message, systemPrompt)) {
+        chunkCount++;
+        console.log(`[VaultAgent] Received chunk ${chunkCount}:`, chunk.length > 50 ? chunk.substring(0, 50) + '...' : chunk);
+        fullResponse += chunk;
+        
+        // Check for thinking tags (both <thinking> and <think> formats)
+        if (chunk.includes('<thinking>') || chunk.includes('<think>')) {
+          isInThinking = true;
+          console.log('[VaultAgent] Found thinking start tag in chunk');
+          let thinkingStart = -1;
+          let tagLength = 0;
+          
+          if (chunk.includes('<thinking>')) {
+            thinkingStart = chunk.indexOf('<thinking>');
+            tagLength = '<thinking>'.length;
+          } else if (chunk.includes('<think>')) {
+            thinkingStart = chunk.indexOf('<think>');
+            tagLength = '<think>'.length;
+          }
+          
+          if (thinkingStart >= 0) {
+            const contentStart = thinkingStart + tagLength;
+            if (contentStart < chunk.length) {
+              currentThinkingContent += chunk.substring(contentStart);
+              console.log('[VaultAgent] Started collecting thinking content:', chunk.substring(contentStart).substring(0, 50) + '...');
+            }
+          }
+          continue;
+        }
+        
+        if (chunk.includes('</thinking>') || chunk.includes('</think>')) {
+          console.log('[VaultAgent] Found thinking end tag in chunk');
+          isInThinking = false;
+          let thinkingEnd = -1;
+          let tagLength = 0;
+          
+          if (chunk.includes('</thinking>')) {
+            thinkingEnd = chunk.indexOf('</thinking>');
+            tagLength = '</thinking>'.length;
+          } else if (chunk.includes('</think>')) {
+            thinkingEnd = chunk.indexOf('</think>');
+            tagLength = '</think>'.length;
+          }
+          
+          if (thinkingEnd >= 0) {
+            // Add the content before the closing tag to thinking
+            if (thinkingEnd > 0) {
+              currentThinkingContent += chunk.substring(0, thinkingEnd);
+            }
+            
+            // Yield the complete thinking content
+            if (currentThinkingContent.trim()) {
+              console.log('[VaultAgent] Extracted thinking content:', currentThinkingContent.trim().substring(0, 100) + '...');
+              yield { type: 'thinking', content: currentThinkingContent.trim() };
+            }
+            
+            currentThinkingContent = '';
+            
+            // Continue with any content after the thinking tag
+            const remainingContent = chunk.substring(thinkingEnd + tagLength);
+            if (remainingContent.trim()) {
+              yield { type: 'text', content: remainingContent };
+            }
+          }
+          continue;
+        }
+        
+        if (isInThinking) {
+          currentThinkingContent += chunk;
+        } else {
+          yield { type: 'text', content: chunk };
+        }
+      }
+      
+      // Process any remaining thinking content
+      if (currentThinkingContent.trim()) {
+        yield { type: 'thinking', content: currentThinkingContent.trim() };
+      }
+      
+      // Parse and execute any tool calls from the complete response
       const toolCallRegex = /TOOL_CALL:\s*(\w+)\s*\(\s*({.*?})\s*\)/g;
       let match;
-      let processedResponse = response;
       
-      while ((match = toolCallRegex.exec(response)) !== null) {
+      while ((match = toolCallRegex.exec(fullResponse)) !== null) {
         const [fullMatch, toolName, argsString] = match;
         
         try {
           const args = JSON.parse(argsString);
           const result = await this.executeTool(toolName, args, context);
           
-          // Replace tool call with result in response
+          // Yield tool result
           const resultText = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-          processedResponse = processedResponse.replace(fullMatch, `\n✅ Executed ${toolName}: ${resultText}\n`);
+          yield { type: 'tool_result', content: `✅ Executed ${toolName}: ${resultText}` };
           
         } catch (error) {
-          processedResponse = processedResponse.replace(fullMatch, `\n❌ Error executing ${toolName}: ${error.message}\n`);
+          yield { type: 'tool_result', content: `❌ Error executing ${toolName}: ${error.message}` };
         }
       }
 
-      return processedResponse;
-
     } catch (error) {
-      console.error('VaultAgent: Error processing message:', error);
-      return `Sorry, I encountered an error processing your request: ${error.message}`;
+      console.error('VaultAgent: Error processing streaming message:', error);
+      yield { type: 'text', content: `Sorry, I encountered an error processing your request: ${error.message}` };
     }
   }
 
@@ -818,7 +1137,7 @@ Please provide:
       } else {
         // Search by display name (case-insensitive, partial match)
         const commandEntries = Object.entries(commands);
-        const match = commandEntries.find(([id, cmd]: [string, any]) => {
+        const match = commandEntries.find(([_id, cmd]: [string, any]) => {
           return cmd.name && cmd.name.toLowerCase().includes(command.toLowerCase());
         });
         
@@ -831,8 +1150,8 @@ Please provide:
         // Try to find similar commands for suggestions
         const commandEntries = Object.entries(commands);
         const suggestions = commandEntries
-          .filter(([, cmd]: [string, any]) => cmd.name)
-          .map(([, cmd]: [string, any]) => cmd.name)
+          .filter(([_id, cmd]: [string, any]) => cmd.name)
+          .map(([_id, cmd]: [string, any]) => cmd.name)
           .filter(name => name.toLowerCase().includes(command.toLowerCase().split(' ')[0]))
           .slice(0, 5);
         
@@ -894,7 +1213,7 @@ Please provide:
       
       // Sort by name and limit results
       const sortedCommands = filteredCommands
-        .filter(([, cmd]: [string, any]) => cmd.name) // Only include commands with names
+        .filter(([_id, cmd]: [string, any]) => cmd.name) // Only include commands with names
         .sort(([, cmdA]: [string, any], [, cmdB]: [string, any]) => 
           cmdA.name.localeCompare(cmdB.name)
         )
@@ -940,7 +1259,7 @@ Please provide:
       // Get all available commands
       const commands = (this.app as any).commands.commands;
       const commandEntries = Object.entries(commands)
-        .filter(([id, cmd]: [string, any]) => cmd.name);
+        .filter(([_id, cmd]: [string, any]) => cmd.name);
       
       // Score commands based on relevance to intent
       const scoredCommands = commandEntries.map(([id, cmd]: [string, any]) => {
@@ -1249,6 +1568,46 @@ Please provide:
       // Ignore hotkey lookup errors
     }
     return null;
+  }
+
+  /**
+   * Get the best folder for a given content type based on MoE learned patterns
+   */
+  getBestFolderForContentType(contentType: string, fallback: string = 'root'): string {
+    return this.moeOrchestrator.getBestFolderForContent(contentType, fallback);
+  }
+
+  /**
+   * Check if MoE system is enabled and functioning
+   */
+  isMoEEnabled(): boolean {
+    return this.moeOrchestrator !== null && this.settings.features.moeSystemEnabled;
+  }
+
+  /**
+   * Get current MoE system status and statistics
+   */
+  getMoEStatus(): {
+    enabled: boolean;
+    experts: number;
+    learnedPatterns: number;
+    lastActivity: string;
+  } {
+    if (!this.isMoEEnabled()) {
+      return {
+        enabled: false,
+        experts: 0,
+        learnedPatterns: 0,
+        lastActivity: 'Never'
+      };
+    }
+
+    return {
+      enabled: true,
+      experts: 6, // Number of expert agents
+      learnedPatterns: this.moeOrchestrator['knowledge'].folderPatterns.size,
+      lastActivity: new Date().toISOString()
+    };
   }
 
   /**

@@ -4,6 +4,7 @@
  */
 
 import { AIProvider, ContentAnalysis } from '../types';
+import { ContentSanitizer } from '../utils/secure-storage';
 
 export abstract class BaseAIProvider implements AIProvider {
   abstract name: string;
@@ -25,6 +26,12 @@ export abstract class BaseAIProvider implements AIProvider {
   abstract generateResponse(prompt: string, context?: string): Promise<string>;
 
   /**
+   * Generate a streaming response using the AI provider
+   * Returns an async generator that yields partial responses
+   */
+  generateStreamingResponse?(prompt: string, context?: string): AsyncGenerator<string, void, unknown>;
+
+  /**
    * Analyze content and return structured analysis
    */
   abstract analyzeContent(content: string): Promise<ContentAnalysis>;
@@ -40,7 +47,7 @@ export abstract class BaseAIProvider implements AIProvider {
       }
 
       // Try a simple test request
-      const testResponse = await this.generateResponse('Test connection', 'This is a simple connectivity test.');
+      await this.generateResponse('Test connection', 'This is a simple connectivity test.');
       
       return { success: true };
     } catch (error) {
@@ -82,7 +89,7 @@ export abstract class BaseAIProvider implements AIProvider {
     return {
       generateResponse: true,
       analyzeContent: true,
-      streaming: false,
+      streaming: this.generateStreamingResponse !== undefined,
     };
   }
 
@@ -109,23 +116,28 @@ export abstract class BaseAIProvider implements AIProvider {
   }
 
   /**
-   * Content sanitization helper
+   * Enhanced content sanitization helper
    */
   protected sanitizeContent(content: string): string {
+    // Remove potential API keys first
+    let sanitized = ContentSanitizer.sanitizeContent(content);
+    
     // Remove potential security risks
-    return content
+    sanitized = sanitized
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
       .replace(/\r\n/g, '\n') // Normalize line endings
       .trim()
       .slice(0, 100000); // Limit length to prevent excessive usage
+    
+    return sanitized;
   }
 
   /**
-   * Error handling helper
+   * Error handling helper with sanitization
    */
   protected handleAPIError(error: any, context: string): never {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`CLIPPY ${this.name}: ${context} failed:`, error);
+    const errorMessage = ContentSanitizer.sanitizeError(error);
+    console.error(`CLIPPY ${this.name}: ${context} failed:`, errorMessage);
     throw new Error(`${this.name} API error: ${errorMessage}`);
   }
 

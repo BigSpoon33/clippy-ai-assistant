@@ -12,6 +12,7 @@ export class PiperTTSEngine extends TTSEngine {
   private bridgePath: string;
   private pythonPath: string;
   private voiceAssistantPath: string;
+  private currentProcess: any = null;
 
   constructor(config: TTSConfig, bridgePath: string, pythonPath: string, voiceAssistantPath: string) {
     super(config);
@@ -95,6 +96,9 @@ export class PiperTTSEngine extends TTSEngine {
         }
       });
 
+      // Store reference to current process for stopping
+      this.currentProcess = childProcess;
+
       let output = '';
       let errorOutput = '';
 
@@ -107,6 +111,9 @@ export class PiperTTSEngine extends TTSEngine {
       });
 
       childProcess.on('close', (code: any) => {
+        // Clear process reference when finished
+        this.currentProcess = null;
+        
         if (code !== 0) {
           resolve({
             success: false,
@@ -139,11 +146,29 @@ export class PiperTTSEngine extends TTSEngine {
       });
 
       childProcess.on('error', (error: any) => {
+        // Clear process reference on error
+        this.currentProcess = null;
+        
         resolve({
           success: false,
           error: `Process error: ${error.message}`
         });
       });
     });
+  }
+
+  /**
+   * Stop current speech synthesis by killing the process
+   */
+  public stopSpeech(): void {
+    if (this.currentProcess) {
+      console.log('[Piper TTS] Stopping current TTS process');
+      try {
+        this.currentProcess.kill('SIGTERM');
+        this.currentProcess = null;
+      } catch (error) {
+        console.error('[Piper TTS] Error stopping process:', error);
+      }
+    }
   }
 }

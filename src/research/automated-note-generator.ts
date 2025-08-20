@@ -19,6 +19,7 @@ export interface ResearchSource {
     url?: string;
     filePath?: string;
     content: string;
+    snippet?: string;
     qualityScore: number;
     relevanceScore: number;
     lastUpdated: Date;

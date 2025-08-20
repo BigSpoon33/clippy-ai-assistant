@@ -11,6 +11,8 @@ import { AgentContext } from '../agents/vault-agent';
 import { LocalVoiceIntegration } from '../voice-v2/local-voice-integration';
 import { VADWidget, VADWidgetConfig } from './components/audio-visualizers/vad-widget';
 import { TTSSpectrumWidget, TTSSpectrumWidgetConfig } from './components/audio-visualizers/tts-spectrum-widget';
+import { ConversationManager, ConversationMessage } from '../conversation/conversation-manager';
+import { ConversationBrowserModal } from './conversation-browser-modal';
 
 export const VIEW_TYPE_VAULT_AGENT = 'clippy-vault-agent-view';
 
@@ -20,6 +22,7 @@ export class VaultAgentSidebarView extends ItemView {
   private voiceAgent: VoiceVaultAgent;
   private voiceSystem: LocalVoiceIntegration | null = null;
   private context: AgentContext;
+  private conversationManager: ConversationManager;
 
   // UI elements
   private chatHistoryEl: HTMLElement;
@@ -28,6 +31,8 @@ export class VaultAgentSidebarView extends ItemView {
   private voiceBtn: HTMLButtonElement;
   private statusEl: HTMLElement;
   private toolsBtn: HTMLButtonElement;
+  private historyBtn: HTMLButtonElement;
+  private newChatBtn: HTMLButtonElement;
   private vadWidget: VADWidget | null = null;
   
   // State
@@ -47,9 +52,18 @@ export class VaultAgentSidebarView extends ItemView {
       currentNote: undefined,
       workingDirectory: 'root',
       conversationHistory: [],
-      sessionId: Date.now().toString()
+      sessionId: Date.now().toString(),
+      recentlyMentionedFiles: [],
+      activeContext: {
+        lastCreatedFile: undefined,
+        lastMentionedFile: undefined,
+        currentWorkingFile: undefined
+      }
     };
 
+    // Initialize conversation manager
+    this.conversationManager = new ConversationManager(this.app);
+    
     // Get voice system from main plugin
     this.voiceSystem = this.getVoiceSystemFromPlugin();
     
@@ -70,11 +84,26 @@ export class VaultAgentSidebarView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    console.log('[Conversation] Initializing vault agent sidebar with conversation system');
+    
+    // Initialize conversation system
+    await this.conversationManager.initialize();
+    
     this.createSidebarInterface();
-    this.addWelcomeMessage();
+    await this.loadOrStartConversation();
+    
+    console.log('[Conversation] Vault agent sidebar initialization complete');
   }
 
   async onClose(): Promise<void> {
+    // Save current conversation before closing
+    try {
+      await this.conversationManager.saveCurrentConversation();
+      console.log('[Conversation] Saved conversation on close');
+    } catch (error) {
+      console.error('[Conversation] Failed to save conversation on close:', error);
+    }
+    
     // Cleanup
     if (this.isVoiceMode && this.voiceSystem) {
       await this.disableVoiceMode();
@@ -105,21 +134,63 @@ export class VaultAgentSidebarView extends ItemView {
     title.style.cssText = 'margin: 0; display: flex; align-items: center; gap: 8px;';
     title.insertAdjacentHTML('afterbegin', '🤖 ');
 
+    // Conversation controls container
+    const conversationControls = header.createEl('div', { cls: 'conversation-controls' });
+    conversationControls.style.cssText = 'display: flex; gap: 4px; align-items: center;';
+    
+    // New conversation button
+    this.newChatBtn = conversationControls.createEl('button', { 
+      text: '🆕',
+      title: 'Start new conversation'
+    });
+    this.newChatBtn.addClass('vault-agent-btn');
+    this.newChatBtn.style.cssText = 'padding: 4px 8px; margin: 0 2px; font-size: 14px; border-radius: 4px;';
+    this.newChatBtn.addEventListener('click', () => this.startNewConversation());
+    console.log('[Conversation] New chat button created');
+
+    // Chat history button
+    this.historyBtn = conversationControls.createEl('button', { 
+      text: '📋',
+      title: 'Browse conversation history'
+    });
+    this.historyBtn.addClass('vault-agent-btn');
+    this.historyBtn.style.cssText = 'padding: 4px 8px; margin: 0 2px; font-size: 14px; border-radius: 4px;';
+    this.historyBtn.addEventListener('click', () => this.showConversationHistory());
+    console.log('[Conversation] History button created');
+
     // Tools button
-    this.toolsBtn = header.createEl('button', { 
+    this.toolsBtn = conversationControls.createEl('button', { 
       text: '🔧',
       title: 'Show available tools'
     });
-    this.toolsBtn.addClass('vault-agent-tools-btn');
+    this.toolsBtn.addClass('vault-agent-btn');
+    this.toolsBtn.style.cssText = 'padding: 4px 8px; margin: 0 2px; font-size: 14px; border-radius: 4px;';
     this.toolsBtn.addEventListener('click', () => this.showToolsInChat());
 
     // Voice button
-    this.voiceBtn = header.createEl('button', { 
+    this.voiceBtn = conversationControls.createEl('button', { 
       text: '🎤',
       title: 'Toggle voice mode'
     });
-    this.voiceBtn.addClass('vault-agent-voice-btn');
+    this.voiceBtn.addClass('vault-agent-btn');
+    this.voiceBtn.style.cssText = 'padding: 4px 8px; margin: 0 2px; font-size: 14px; border-radius: 4px;';
     this.voiceBtn.addEventListener('click', () => this.toggleVoiceMode());
+
+    // Save conversation button (for debugging)
+    const saveBtn = conversationControls.createEl('button', { 
+      text: '💾',
+      title: 'Save conversation'
+    });
+    saveBtn.addClass('vault-agent-btn');
+    saveBtn.style.cssText = 'padding: 4px 8px; margin: 0 2px; font-size: 14px; border-radius: 4px;';
+    saveBtn.addEventListener('click', async () => {
+      try {
+        await this.conversationManager.saveCurrentConversation();
+        this.addMessage('assistant', '💾 Conversation saved successfully!');
+      } catch (error) {
+        this.addMessage('assistant', `❌ Failed to save conversation: ${error.message}`);
+      }
+    });
 
     // Initialize VAD widget next to voice button
     this.initializeVADWidget(header);
@@ -174,7 +245,7 @@ export class VaultAgentSidebarView extends ItemView {
     pushToTalkBtn.addEventListener('mouseleave', () => this.stopListening());
   }
 
-  private addMessage(role: 'user' | 'assistant', content: string): HTMLElement {
+  private addMessage(role: 'user' | 'assistant', content: string, isStreaming: boolean = false): HTMLElement {
     const message = {
       role,
       content,
@@ -224,6 +295,30 @@ export class VaultAgentSidebarView extends ItemView {
       // Render markdown-like formatting
       content_el.innerHTML = this.formatAssistantMessage(content);
       
+      // Add streaming cursor if this is a streaming message
+      if (isStreaming) {
+        const cursor = content_el.createEl('span', { cls: 'streaming-cursor' });
+        cursor.textContent = '▊';
+        cursor.style.cssText = `
+          animation: blink 1s infinite;
+          color: var(--interactive-accent);
+          font-weight: bold;
+        `;
+        
+        // Add blink animation if not already added
+        if (!document.head.querySelector('style[data-streaming-cursor]')) {
+          const style = document.createElement('style');
+          style.setAttribute('data-streaming-cursor', 'true');
+          style.textContent = `
+            @keyframes blink {
+              0%, 50% { opacity: 1; }
+              51%, 100% { opacity: 0; }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      }
+      
       // Add TTS spectrum container for assistant messages
       const spectrumContainer = messageEl.createEl('div', { cls: 'tts-spectrum-container' });
       spectrumContainer.style.cssText = `
@@ -238,7 +333,9 @@ export class VaultAgentSidebarView extends ItemView {
       `;
       
       // Add a placeholder text for debugging
-      spectrumContainer.innerHTML = '<div style="padding: 8px; color: var(--text-muted); font-size: 12px; text-align: center;">🎵 Spectrum visualizer will appear here during speech</div>';
+      spectrumContainer.innerHTML = '<div style="padding: 8px; color: var(--text-muted); font-size: 12px; text-align: center;">🎵 Spectrum visualizer will appear here during speech 🔊 Stop button will appear when speaking</div>';
+      
+      console.log('[TTS Container] Created spectrum container in addMessage with placeholder');
       
       // Store reference to spectrum container for later use
       messageEl.dataset.spectrumContainer = 'true';
@@ -263,6 +360,8 @@ export class VaultAgentSidebarView extends ItemView {
    */
   private async speakWithSpectrum(text: string, messageEl: HTMLElement): Promise<void> {
     console.log('[TTS Spectrum] Starting speech with spectrum visualization for text:', text.substring(0, 50) + '...');
+    console.log('[TTS Spectrum] Full text length:', text.length, 'contains <think>:', text.includes('<think'));
+    console.log('[TTS Spectrum] Text preview (first 200 chars):', text.substring(0, 200));
     
     try {
       // Find spectrum container in the message element
@@ -275,7 +374,9 @@ export class VaultAgentSidebarView extends ItemView {
       
       console.log('[TTS Spectrum] Spectrum container found, initializing visualization');
 
-      // Show spectrum container
+      // Clear placeholder and show spectrum container
+      console.log('[TTS Interrupt] Clearing placeholder and showing spectrum container');
+      spectrumContainer.innerHTML = ''; // Clear placeholder
       spectrumContainer.style.display = 'block';
       this.currentSpeakingMessage = messageEl;
       
@@ -330,19 +431,121 @@ export class VaultAgentSidebarView extends ItemView {
         }
       };
 
-      // Add speaking status indicator with pulse animation
-      const statusEl = spectrumContainer.createEl('div', { cls: 'tts-status' });
+      console.log('[TTS Interrupt] Creating status container and interrupt button');
+      
+      // Add speaking status indicator with pulse animation and interrupt button
+      const statusContainer = spectrumContainer.createEl('div', { cls: 'tts-status-container' });
+      statusContainer.style.cssText = `
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+        padding: 8px;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: relative;
+        z-index: 1000;
+        background: var(--background-primary);
+        border-radius: 4px;
+        border: 1px solid var(--background-modifier-border);
+      `;
+      
+      console.log('[TTS Interrupt] Status container created:', statusContainer);
+      
+      const statusEl = statusContainer.createEl('div', { cls: 'tts-status' });
       statusEl.style.cssText = `
         padding: 4px 8px;
         background: var(--interactive-accent);
         color: white;
         border-radius: 12px;
         font-size: 11px;
-        margin-bottom: 8px;
         display: inline-block;
         animation: pulse 1.5s ease-in-out infinite;
       `;
       statusEl.textContent = '🔊 Speaking...';
+      
+      // Add TTS interrupt button
+      const interruptBtn = statusContainer.createEl('button', { cls: 'tts-interrupt-btn' });
+      interruptBtn.style.cssText = `
+        padding: 6px 12px;
+        background: #dc2626;
+        color: white;
+        border: 2px solid #dc2626;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        display: inline-block !important;
+        visibility: visible !important;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        min-width: 70px;
+        text-align: center;
+        position: relative;
+        z-index: 1000;
+      `;
+      interruptBtn.textContent = '⏹️ Stop';
+      interruptBtn.title = 'Stop speech immediately';
+      
+      console.log('[TTS Interrupt] Created interrupt button with explicit styling');
+      console.log('[TTS Interrupt] Button element:', interruptBtn);
+      console.log('[TTS Interrupt] Button parent container:', statusContainer);
+      console.log('[TTS Interrupt] Spectrum container:', spectrumContainer);
+      
+      // Force a DOM update and verify button is visible
+      setTimeout(() => {
+        const buttonCheck = spectrumContainer.querySelector('.tts-interrupt-btn') as HTMLElement;
+        console.log('[TTS Interrupt] Button visibility check after timeout:', {
+          buttonExists: !!buttonCheck,
+          buttonVisible: buttonCheck ? getComputedStyle(buttonCheck).display !== 'none' : false,
+          containerVisible: getComputedStyle(spectrumContainer).display !== 'none',
+          buttonOffsetWidth: buttonCheck ? buttonCheck.offsetWidth : 0,
+          buttonOffsetHeight: buttonCheck ? buttonCheck.offsetHeight : 0
+        });
+      }, 100);
+      
+      // Add interrupt functionality
+      let isInterrupted = false;
+      interruptBtn.addEventListener('click', () => {
+        console.log('[TTS Interrupt] User clicked stop button');
+        isInterrupted = true;
+        
+        // Stop TTS immediately
+        this.stopCurrentSpeech();
+        
+        // Hide spectrum container and reset border
+        spectrumContainer.style.display = 'none';
+        this.resetAudioReactiveBorder(messageEl);
+        this.currentSpeakingMessage = null;
+        
+        // Visual feedback
+        interruptBtn.textContent = '✅ Stopped';
+        interruptBtn.style.background = '#22c55e';
+        interruptBtn.style.borderColor = '#22c55e';
+        setTimeout(() => {
+          if (spectrumContainer.parentNode) {
+            spectrumContainer.style.display = 'none';
+          }
+        }, 1000);
+      });
+      
+      // Hover effect for interrupt button
+      interruptBtn.addEventListener('mouseenter', () => {
+        if (!isInterrupted) {
+          interruptBtn.style.background = '#b91c1c';
+          interruptBtn.style.borderColor = '#b91c1c';
+          interruptBtn.style.transform = 'scale(1.05)';
+        }
+      });
+      
+      interruptBtn.addEventListener('mouseleave', () => {
+        if (!isInterrupted) {
+          interruptBtn.style.background = '#dc2626';
+          interruptBtn.style.borderColor = '#dc2626';
+          interruptBtn.style.transform = 'scale(1)';
+        }
+      });
       
       // Add pulse animation CSS
       const style = document.createElement('style');
@@ -715,6 +918,51 @@ export class VaultAgentSidebarView extends ItemView {
     messageEl.style.boxShadow = 'none';
   }
 
+
+  /**
+   * Stop current speech immediately
+   */
+  private stopCurrentSpeech(): void {
+    console.log('[TTS Interrupt] Stopping current speech');
+    
+    try {
+      // Stop TTS through voice system
+      if (this.voiceSystem) {
+        const ttsManager = this.voiceSystem.getTTSManager();
+        if (ttsManager && typeof (ttsManager as any).stopSpeech === 'function') {
+          console.log('[TTS Interrupt] Stopping TTS manager');
+          (ttsManager as any).stopSpeech();
+        }
+      }
+      
+      // Stop voice agent speech
+      if (this.voiceAgent && typeof (this.voiceAgent as any).stopSpeaking === 'function') {
+        console.log('[TTS Interrupt] Stopping voice agent speech');
+        (this.voiceAgent as any).stopSpeaking();
+      }
+      
+      // Stop any Web Speech API synthesis
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        console.log('[TTS Interrupt] Stopping Web Speech API');
+        window.speechSynthesis.cancel();
+      }
+      
+      // Stop any audio elements that might be playing
+      const audioElements = document.querySelectorAll('audio');
+      audioElements.forEach(audio => {
+        if (!audio.paused) {
+          console.log('[TTS Interrupt] Stopping audio element');
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      });
+      
+      console.log('[TTS Interrupt] Speech stop commands sent');
+    } catch (error) {
+      console.error('[TTS Interrupt] Error stopping speech:', error);
+    }
+  }
+
   private formatAssistantMessage(content: string): string {
     return content
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -746,21 +994,65 @@ export class VaultAgentSidebarView extends ItemView {
     this.inputEl.value = '';
     this.setProcessing(true);
 
+    // Add user message to conversation manager
+    this.conversationManager.addMessage({
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    });
+
     try {
       // Update context with current note if available
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       this.context.currentNote = activeView?.file || undefined;
       this.context.workingDirectory = activeView?.file?.parent?.path || 'root';
 
-      // Process message through voice agent
-      const response = await this.voiceAgent.processMessage(message, this.context);
+      // Update context with full conversation history
+      this.context.conversationHistory = this.chatHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp)
+      }));
+
+      // Always try streaming first, with fallback
+      console.log('[Vault Agent] Attempting streaming response...');
       
-      // Add response to chat
-      const messageEl = this.addMessage('assistant', response);
-      
-      // Speak response if voice mode is enabled
-      if (this.isVoiceMode && this.voiceSystem && this.voiceSystem.isActive) {
-        await this.speakWithSpectrum(response, messageEl);
+      try {
+        // Try streaming response
+        await this.handleStreamingResponse(message);
+      } catch (streamingError) {
+        console.warn('[Vault Agent] Streaming failed, falling back to non-streaming:', streamingError);
+        
+        // Fallback to non-streaming with thinking support
+        const response = await this.voiceAgent.processMessage(message, this.context);
+        const messageEl = this.addMessage('assistant', '');
+        
+        // Extract thinking content from the response
+        const { thinking, cleanResponse } = this.extractThinkingFromResponse(response);
+        
+        // Add thinking sections if present
+        thinking.forEach(thinkingContent => {
+          this.addThinkingSection(messageEl, thinkingContent);
+        });
+        
+        // Set the clean response content
+        const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
+        if (contentEl) {
+          contentEl.innerHTML = this.formatAssistantMessage(cleanResponse);
+        }
+        
+        // Add assistant message to conversation manager
+        this.conversationManager.addMessage({
+          role: 'assistant',
+          content: cleanResponse,
+          timestamp: new Date(),
+          thinking: thinking.length > 0 ? thinking : undefined
+        });
+        
+        // Speak response if voice mode is enabled (use clean response for TTS)
+        if (this.isVoiceMode && this.voiceSystem && this.voiceSystem.isActive) {
+          await this.speakWithSpectrum(cleanResponse, messageEl);
+        }
       }
 
     } catch (error) {
@@ -772,6 +1064,10 @@ export class VaultAgentSidebarView extends ItemView {
   }
 
   private addWelcomeMessage(): void {
+    // Check if MoE is enabled
+    const moeStatus = this.voiceAgent.isMoEEnabled();
+    const moeInfo = moeStatus ? '\n\n🧠 **MoE System Active**: I now use a Mixture of Experts to provide more consistent and intelligent responses!' : '';
+    
     const welcomeMessage = `Welcome to CLIPPY Vault Agent! 🤖
 
 I can help you manage your vault with these capabilities:
@@ -787,9 +1083,16 @@ Try commands like:
 • "List all my notes tagged with project"
 • "Search for notes about obsidian"
 
-🎤 Enable voice mode for hands-free interaction!`;
+🎤 Enable voice mode for hands-free interaction!${moeInfo}`;
 
     this.addMessage('assistant', welcomeMessage);
+    
+    if (moeStatus) {
+      console.log('🧠 CLIPPY MoE System is ACTIVE in vault agent sidebar');
+      console.log('🧠 MoE Status:', this.voiceAgent.getMoEStatus());
+    } else {
+      console.log('❌ CLIPPY MoE System is DISABLED in vault agent sidebar');
+    }
   }
 
   private showToolsInChat(): void {
@@ -821,7 +1124,8 @@ You can use these tools by describing what you want to do in natural language.`;
     }
 
     try {
-      // Voice system activation is handled internally
+      // Activate the voice system
+      await this.voiceSystem.startVoice();
 
       this.isVoiceMode = true;
       this.voiceBtn.textContent = '🔇';
@@ -861,6 +1165,11 @@ You can use these tools by describing what you want to do in natural language.`;
 
     if (this.isListening) {
       await this.stopListening();
+    }
+
+    // Stop the voice system
+    if (this.voiceSystem) {
+      await this.voiceSystem.stopVoice();
     }
 
     // Stop VAD widget if available
@@ -922,22 +1231,69 @@ You can use these tools by describing what you want to do in natural language.`;
       this.context.currentNote = activeView?.file || undefined;
       this.context.workingDirectory = activeView?.file?.parent?.path || 'root';
 
-      // Process through voice agent
-      const response = await this.voiceAgent.processVoiceMessage(message, this.context);
+      // Update context with full conversation history
+      this.context.conversationHistory = this.chatHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp)
+      }));
+
+      // Try streaming first for voice mode to get thinking sections
+      console.log('[Voice Mode] Attempting streaming response for voice message...');
       
-      // Handle VoiceResponse type
-      if (typeof response === 'string') {
-        const messageEl = this.addMessage('assistant', response);
-        // Speak if voice mode is enabled
-        if (this.isVoiceMode && this.voiceSystem && this.voiceSystem.isActive) {
-          await this.speakWithSpectrum(response, messageEl);
-        }
-      } else {
-        const messageEl = this.addMessage('assistant', response.textResponse);
+      try {
+        // Try streaming response which handles thinking sections
+        await this.handleStreamingResponse(message);
+      } catch (streamingError) {
+        console.warn('[Voice Mode] Streaming failed, falling back to regular voice processing:', streamingError);
         
-        // Speak if voice response is available
-        if (response.shouldSpeak && response.spokenResponse && this.voiceSystem) {
-          await this.speakWithSpectrum(response.spokenResponse, messageEl);
+        // Fallback to non-streaming voice processing with thinking extraction
+        const response = await this.voiceAgent.processVoiceMessage(message, this.context);
+        
+        // Handle VoiceResponse type
+        if (typeof response === 'string') {
+          // Extract thinking content from string response
+          const { thinking, cleanResponse } = this.extractThinkingFromResponse(response);
+          const messageEl = this.addMessage('assistant', '');
+          
+          // Add thinking sections if present
+          thinking.forEach(thinkingContent => {
+            this.addThinkingSection(messageEl, thinkingContent);
+          });
+          
+          // Set the clean response content
+          const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
+          if (contentEl) {
+            contentEl.innerHTML = this.formatAssistantMessage(cleanResponse);
+          }
+          
+          // Speak only the clean response (no thinking content for TTS)
+          if (this.isVoiceMode && this.voiceSystem && this.voiceSystem.isActive) {
+            console.log('[Voice Mode] Speaking clean response for TTS:', cleanResponse.substring(0, 100) + '...');
+            await this.speakWithSpectrum(cleanResponse, messageEl);
+          }
+        } else {
+          // Handle VoiceResponse object - extract thinking from textResponse
+          const { thinking, cleanResponse } = this.extractThinkingFromResponse(response.textResponse);
+          const messageEl = this.addMessage('assistant', '');
+          
+          // Add thinking sections if present
+          thinking.forEach(thinkingContent => {
+            this.addThinkingSection(messageEl, thinkingContent);
+          });
+          
+          // Set the clean text response
+          const contentEl = messageEl.querySelector('.message-content') as HTMLElement;
+          if (contentEl) {
+            contentEl.innerHTML = this.formatAssistantMessage(cleanResponse);
+          }
+          
+          // Speak the spokenResponse if available, otherwise cleanResponse
+          if (response.shouldSpeak && this.voiceSystem) {
+            const speechText = response.spokenResponse || cleanResponse;
+            console.log('[Voice Mode] Speaking voice response for TTS:', speechText.substring(0, 100) + '...');
+            await this.speakWithSpectrum(speechText, messageEl);
+          }
         }
       }
 
@@ -1040,5 +1396,453 @@ You can use these tools by describing what you want to do in natural language.`;
 
   private getVoiceSystemFromPlugin(): LocalVoiceIntegration | null {
     return this.plugin.voiceSystemV2 || null;
+  }
+
+  /**
+   * Load existing conversation or start new one
+   */
+  private async loadOrStartConversation(): Promise<void> {
+    const currentConversation = this.conversationManager.getCurrentConversation();
+    
+    if (currentConversation) {
+      console.log('[Conversation] Loading existing conversation:', currentConversation.id);
+      const messages = this.conversationManager.getCurrentMessages();
+      this.loadConversationMessages(messages);
+      this.updateActiveContext(currentConversation.activeContext);
+    } else {
+      console.log('[Conversation] Starting new conversation');
+      await this.conversationManager.startNewConversation();
+      this.addWelcomeMessage();
+    }
+  }
+
+  /**
+   * Start a new conversation
+   */
+  private async startNewConversation(): Promise<void> {
+    console.log('[Conversation] User starting new conversation');
+    
+    // Clear current chat display
+    this.chatHistoryEl.empty();
+    this.chatHistory = [];
+    
+    // Start new conversation
+    await this.conversationManager.startNewConversation();
+    
+    // Show welcome message
+    this.addWelcomeMessage();
+    
+    // Reset context
+    this.context.recentlyMentionedFiles = [];
+    this.context.activeContext = {
+      lastCreatedFile: undefined,
+      lastMentionedFile: undefined,
+      currentWorkingFile: undefined
+    };
+  }
+
+  /**
+   * Show conversation history browser
+   */
+  private showConversationHistory(): void {
+    const modal = new ConversationBrowserModal(
+      this.app,
+      this.conversationManager,
+      (conversationId) => this.loadConversation(conversationId),
+      () => this.startNewConversation()
+    );
+    modal.open();
+  }
+
+  /**
+   * Load a specific conversation
+   */
+  private async loadConversation(conversationId: string): Promise<void> {
+    try {
+      console.log('[Conversation] Loading conversation:', conversationId);
+      
+      // Clear current display
+      this.chatHistoryEl.empty();
+      this.chatHistory = [];
+      
+      // Load conversation
+      const messages = await this.conversationManager.loadConversation(conversationId);
+      const conversation = this.conversationManager.getCurrentConversation();
+      
+      if (conversation) {
+        // Update active context
+        this.updateActiveContext(conversation.activeContext);
+        
+        // Load messages into UI
+        this.loadConversationMessages(messages);
+        
+        // Update status
+        this.statusEl.textContent = `📖 Loaded conversation: ${conversation.title}`;
+        setTimeout(() => {
+          this.statusEl.textContent = this.isVoiceMode ? '🎤 Voice Mode' : '💬 Text Mode';
+        }, 3000);
+      }
+      
+    } catch (error) {
+      console.error('[Conversation] Failed to load conversation:', error);
+      this.addMessage('assistant', `❌ Failed to load conversation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Load conversation messages into the UI
+   */
+  private loadConversationMessages(messages: ConversationMessage[]): void {
+    for (const message of messages) {
+      const messageEl = this.addMessage(message.role, message.content);
+      
+      // Add thinking sections if present
+      if (message.thinking && message.thinking.length > 0) {
+        message.thinking.forEach(thinkingContent => {
+          this.addThinkingSection(messageEl, thinkingContent);
+        });
+      }
+      
+      // Add tool call information if present
+      if (message.toolCalls && message.toolCalls.length > 0) {
+        const toolInfo = message.toolCalls.map(tool => 
+          `${tool.success ? '✅' : '❌'} ${tool.tool}: ${tool.result}`
+        ).join('\n');
+        
+        // Add as a small info section
+        const toolEl = messageEl.createEl('div', { cls: 'message-tool-info' });
+        toolEl.style.cssText = `
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-top: 8px;
+          padding: 6px;
+          background: var(--background-secondary-alt);
+          border-radius: 4px;
+          border-left: 3px solid var(--interactive-accent);
+        `;
+        toolEl.textContent = toolInfo;
+      }
+    }
+  }
+
+  /**
+   * Update active context from conversation metadata
+   */
+  private updateActiveContext(activeContext: any): void {
+    this.context.activeContext = {
+      lastCreatedFile: activeContext.lastCreatedFile,
+      lastMentionedFile: activeContext.lastMentionedFile,  
+      currentWorkingFile: activeContext.currentWorkingFile
+    };
+    
+    // Also update conversation manager context
+    this.conversationManager.updateActiveContext(activeContext);
+  }
+
+  /**
+   * Handle streaming response with thinking sections
+   */
+  private async handleStreamingResponse(message: string): Promise<void> {
+    let currentMessageEl: HTMLElement | null = null;
+    let currentContentEl: HTMLElement | null = null;
+    let currentThinkingEl: HTMLElement | null = null;
+    let streamingCursor: HTMLElement | null = null;
+    let fullResponse = ''; // Only includes clean text, not thinking content
+    let chunkCount = 0;
+    
+    console.log('[Vault Agent] Starting streaming response handler');
+    
+    try {
+      // Ensure context has latest conversation history
+      this.context.conversationHistory = this.chatHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp)
+      }));
+      
+      console.log('[Vault Agent] Getting streaming generator...');
+      const streamGenerator = this.voiceAgent.processMessageStreaming(message, this.context);
+      console.log('[Vault Agent] Stream generator created:', streamGenerator);
+      
+      for await (const chunk of streamGenerator) {
+        chunkCount++;
+        console.log(`[Vault Agent] Received chunk ${chunkCount}:`, chunk);
+        if (chunk.type === 'thinking') {
+          console.log('[Vault Agent] Received thinking chunk, creating toggleable section');
+          
+          // Ensure message element exists first
+          if (!currentMessageEl) {
+            console.log('[Vault Agent] Creating message element for thinking section');
+            currentMessageEl = this.addMessage('assistant', '', true);
+            currentContentEl = currentMessageEl.querySelector('.message-content') as HTMLElement;
+            streamingCursor = currentContentEl?.querySelector('.streaming-cursor') as HTMLElement;
+          }
+          
+          // Add thinking section if not exists - place at the top of message
+          if (!currentThinkingEl && currentMessageEl) {
+            console.log('[Vault Agent] Adding thinking section to message element');
+            const messageHeader = currentMessageEl.querySelector('.message-header') as HTMLElement;
+            currentThinkingEl = this.createThinkingSectionElement(chunk.content);
+            
+            // Insert thinking section immediately after the message header (avatar + content)
+            if (messageHeader && currentThinkingEl) {
+              messageHeader.parentNode?.insertBefore(currentThinkingEl, messageHeader.nextSibling);
+            }
+          } else if (currentThinkingEl) {
+            // Update existing thinking content
+            const thinkingContent = currentThinkingEl.querySelector('.thinking-content') as HTMLElement;
+            if (thinkingContent) {
+              thinkingContent.innerHTML = this.formatAssistantMessage(chunk.content);
+            }
+          }
+        } else if (chunk.type === 'text') {
+          // Initialize message element if not exists
+          if (!currentMessageEl) {
+            console.log('[Vault Agent] Creating new message element for streaming');
+            currentMessageEl = this.addMessage('assistant', '', true);
+            currentContentEl = currentMessageEl.querySelector('.message-content') as HTMLElement;
+            streamingCursor = currentContentEl?.querySelector('.streaming-cursor') as HTMLElement;
+          }
+          
+          if (currentContentEl) {
+            // Remove cursor temporarily
+            if (streamingCursor) {
+              streamingCursor.remove();
+            }
+            
+            // Add new content - Note: chunk.content should be the NEXT part, not cumulative
+            fullResponse += chunk.content;
+            console.log('[Vault Agent] Updating content. Chunk:', chunk.content, 'Full so far:', fullResponse.length, 'chars');
+            currentContentEl.innerHTML = this.formatAssistantMessage(fullResponse);
+            
+            // Re-add cursor
+            if (streamingCursor) {
+              currentContentEl.appendChild(streamingCursor);
+            }
+            
+            // Scroll to bottom
+            this.chatHistoryEl.scrollTop = this.chatHistoryEl.scrollHeight;
+          }
+        } else if (chunk.type === 'tool_result') {
+          // Add tool result as separate message
+          this.addMessage('assistant', chunk.content);
+        }
+      }
+      
+      // Remove streaming cursor when complete
+      if (streamingCursor) {
+        streamingCursor.remove();
+      }
+      
+      // Add assistant message to conversation manager (for streaming responses)
+      if (fullResponse) {
+        // Extract thinking from fullResponse for the conversation manager
+        const { thinking, cleanResponse } = this.extractThinkingFromResponse(fullResponse);
+        this.conversationManager.addMessage({
+          role: 'assistant',
+          content: cleanResponse,
+          timestamp: new Date(),
+          thinking: thinking.length > 0 ? thinking : undefined
+        });
+        console.log('[Conversation] Added streaming response to conversation manager');
+      }
+      
+      // Speak final response if voice mode is enabled (filter out thinking content for TTS)
+      if (this.isVoiceMode && this.voiceSystem && this.voiceSystem.isActive && currentMessageEl && fullResponse) {
+        // Extract clean response without thinking content for TTS
+        const { thinking, cleanResponse } = this.extractThinkingFromResponse(fullResponse);
+        
+        console.log('[Vault Agent] Original response length:', fullResponse.length, 'Clean response length:', cleanResponse.length);
+        console.log('[Vault Agent] Original response preview:', fullResponse.substring(0, 100) + '...');
+        console.log('[Vault Agent] Clean response preview:', cleanResponse.substring(0, 100) + '...');
+        console.log('[Vault Agent] Extracted thinking sections:', thinking.length);
+        console.log('[Vault Agent] Filtered out thinking content. Contains <think>:', fullResponse.includes('<think'));
+        
+        // Only speak if there's actual clean content (not just thinking)
+        if (cleanResponse.trim().length > 0) {
+          console.log('[Vault Agent] Speaking non-empty clean response for TTS');
+          await this.speakWithSpectrum(cleanResponse, currentMessageEl);
+        } else {
+          console.log('[Vault Agent] No clean response content to speak (was all thinking)');
+          // Hide spectrum container since there's nothing to speak
+          const spectrumContainer = currentMessageEl.querySelector('.tts-spectrum-container') as HTMLElement;
+          if (spectrumContainer) {
+            spectrumContainer.style.display = 'none';
+          }
+          this.resetAudioReactiveBorder(currentMessageEl);
+          this.currentSpeakingMessage = null;
+        }
+      }
+      
+    } catch (error) {
+      console.error('CLIPPY Vault Agent: Error in streaming response:', error);
+      this.addMessage('assistant', `❌ Streaming Error: ${error.message}`);
+    }
+  }
+
+  /**
+   * Add a collapsible thinking section to a message
+   */
+  private addThinkingSection(messageEl: HTMLElement, content: string): HTMLElement {
+    console.log('[Vault Agent] Creating thinking section with content:', content.substring(0, 100) + '...');
+    const thinkingContainer = this.createThinkingSectionElement(content);
+    
+    // Find the message header and insert thinking section immediately after it
+    const messageHeader = messageEl.querySelector('.message-header') as HTMLElement;
+    if (messageHeader) {
+      messageHeader.parentNode?.insertBefore(thinkingContainer, messageHeader.nextSibling);
+    } else {
+      // Fallback: add to message element directly
+      messageEl.appendChild(thinkingContainer);
+    }
+    
+    console.log('[Vault Agent] Thinking section created and added to message element');
+    return thinkingContainer;
+  }
+
+  /**
+   * Create a thinking section element without adding it to DOM
+   */
+  private createThinkingSectionElement(content: string): HTMLElement {
+    console.log('[Vault Agent] Creating thinking section element with content:', content.substring(0, 100) + '...');
+    
+    const thinkingContainer = document.createElement('div');
+    thinkingContainer.className = 'thinking-container';
+    thinkingContainer.style.cssText = `
+      margin: 8px 0 12px 32px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 6px;
+      background: var(--background-secondary-alt);
+      overflow: hidden;
+      display: block !important;
+      visibility: visible !important;
+    `;
+    
+    // Collapsible header
+    const thinkingHeader = thinkingContainer.createEl('div', { cls: 'thinking-header' });
+    thinkingHeader.style.cssText = `
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--background-modifier-hover);
+      cursor: pointer;
+      border-bottom: 1px solid var(--background-modifier-border);
+      user-select: none;
+      transition: background-color 0.2s ease;
+    `;
+    
+    // Toggle icon
+    const toggleIcon = thinkingHeader.createEl('span', { cls: 'thinking-toggle' });
+    toggleIcon.textContent = '▶';
+    toggleIcon.style.cssText = `
+      margin-right: 8px;
+      transition: transform 0.2s ease;
+      font-size: 12px;
+      color: var(--text-muted);
+    `;
+    
+    // Header text
+    const headerText = thinkingHeader.createEl('span', { cls: 'thinking-header-text' });
+    headerText.textContent = '🤔 Thinking... (click to expand)';
+    headerText.style.cssText = `
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+    `;
+    
+    // Content container (initially collapsed)
+    const thinkingContent = thinkingContainer.createEl('div', { cls: 'thinking-content' });
+    thinkingContent.style.cssText = `
+      padding: 12px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      line-height: 1.4;
+      font-size: 13px;
+      color: var(--text-muted);
+      font-style: italic;
+    `;
+    
+    // Set initial content
+    thinkingContent.innerHTML = this.formatAssistantMessage(content);
+    
+    // Add toggle functionality
+    let isExpanded = false;
+    thinkingHeader.addEventListener('click', () => {
+      isExpanded = !isExpanded;
+      
+      if (isExpanded) {
+        thinkingContent.style.maxHeight = `${thinkingContent.scrollHeight}px`;
+        toggleIcon.style.transform = 'rotate(90deg)';
+        headerText.textContent = '🤔 Thinking... (click to hide)';
+      } else {
+        thinkingContent.style.maxHeight = '0';
+        toggleIcon.style.transform = 'rotate(0deg)';
+        headerText.textContent = '🤔 Thinking... (click to expand)';
+      }
+    });
+    
+    // Hover effects
+    thinkingHeader.addEventListener('mouseenter', () => {
+      thinkingHeader.style.backgroundColor = 'var(--background-modifier-border-hover)';
+    });
+    
+    thinkingHeader.addEventListener('mouseleave', () => {
+      thinkingHeader.style.backgroundColor = 'var(--background-modifier-hover)';
+    });
+    
+    return thinkingContainer;
+  }
+
+  /**
+   * Extract thinking content from response text
+   */
+  private extractThinkingFromResponse(response: string): { thinking: string[], cleanResponse: string } {
+    console.log('[Thinking] Extracting thinking from response:', response.substring(0, 200) + '...');
+    
+    const thinking: string[] = [];
+    let cleanResponse = response;
+    
+    // Handle malformed thinking tags - if response starts with <think> but no closing tag
+    if (response.trimStart().startsWith('<think>') || response.trimStart().startsWith('<thinking>')) {
+      console.log('[Thinking] Response starts with thinking tag, handling malformed case');
+      
+      // Check if there's a proper closing tag
+      const hasClosingThink = response.includes('</think>') || response.includes('</thinking>');
+      
+      if (!hasClosingThink) {
+        // Entire response is thinking content - extract it all
+        const thinkStart = response.indexOf('<think>') !== -1 ? '<think>' : '<thinking>';
+        const thinkContent = response.substring(response.indexOf(thinkStart) + thinkStart.length).trim();
+        
+        if (thinkContent.length > 0) {
+          thinking.push(thinkContent);
+          cleanResponse = ''; // No clean response, it's all thinking
+          console.log('[Thinking] Extracted malformed thinking content:', thinkContent.substring(0, 100) + '...');
+          console.log('[Thinking] Setting cleanResponse to empty string due to malformed thinking');
+          return { thinking, cleanResponse }; // Return early to avoid further processing
+        }
+      }
+    }
+    
+    // Extract all proper thinking blocks (both <thinking> and <think> formats)
+    const thinkingRegex = /<think(?:ing)?>([\s\S]*?)<\/think(?:ing)?>/g;
+    let match;
+    
+    while ((match = thinkingRegex.exec(response)) !== null) {
+      thinking.push(match[1].trim());
+      console.log('[Thinking] Found proper thinking content:', match[1].trim().substring(0, 100) + '...');
+    }
+    
+    // Remove thinking blocks from the clean response and clean up extra whitespace
+    cleanResponse = cleanResponse.replace(thinkingRegex, '').replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+    
+    // Remove malformed thinking tags at the start
+    cleanResponse = cleanResponse.replace(/^<think(?:ing)?>[^]*$/, '').trim();
+    
+    console.log('[Thinking] Clean response for TTS:', cleanResponse.substring(0, 200) + '...');
+    console.log('[Thinking] Found', thinking.length, 'thinking sections');
+    
+    return { thinking, cleanResponse };
   }
 }

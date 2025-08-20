@@ -99,6 +99,56 @@ ${sanitizedContext ? `Context: ${sanitizedContext}` : ''}`;
     }
   }
 
+  /**
+   * Generate a streaming response from Anthropic Claude
+   */
+  async* generateStreamingResponse(prompt: string, context?: string): AsyncGenerator<string, void, unknown> {
+    try {
+      await this.checkRateLimit(50); // Anthropic rate limits
+      
+      const sanitizedPrompt = this.sanitizeContent(prompt);
+      const sanitizedContext = context ? this.sanitizeContent(context) : '';
+
+      const systemMessage = `You are CLIPPY, an AI assistant for Obsidian note management. 
+You help users enhance their notes, suggest improvements, and organize information.
+Be concise, helpful, and preserve the user's original intent.
+Follow Obsidian markdown conventions and respect existing wikilinks and frontmatter.
+
+${sanitizedContext ? `Context: ${sanitizedContext}` : ''}`;
+
+      const stream = await this.client.messages.create({
+        model: this.config.model,
+        max_tokens: 1000,
+        temperature: 0.7,
+        system: systemMessage,
+        messages: [
+          {
+            role: 'user',
+            content: sanitizedPrompt
+          }
+        ],
+        stream: true
+      });
+
+      let fullResponse = '';
+      
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+          const textChunk = chunk.delta.text;
+          fullResponse += textChunk;
+          yield textChunk;
+        }
+      }
+
+      if (!fullResponse.trim()) {
+        throw new Error('Empty streaming response');
+      }
+
+    } catch (error) {
+      this.handleAPIError(error, 'generateStreamingResponse');
+    }
+  }
+
   async analyzeContent(content: string): Promise<ContentAnalysis> {
     try {
       await this.checkRateLimit(30); // More conservative for analysis

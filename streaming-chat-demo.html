@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming Chat Demo - OpenWebUI Style</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            width: 100%;
+        }
+
+        .chat-header {
+            padding: 20px 0;
+            border-bottom: 1px solid #333;
+            margin-bottom: 20px;
+        }
+
+        .chat-header h1 {
+            color: #4a9eff;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .chat-header p {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .message.user .message-avatar {
+            background: #4a9eff;
+        }
+
+        .message.assistant .message-avatar {
+            background: #2d2d2d;
+            border: 1px solid #444;
+        }
+
+        .message-content {
+            background: #2d2d2d;
+            border-radius: 12px;
+            padding: 12px 16px;
+            max-width: 70%;
+            position: relative;
+            border: 1px solid #404040;
+        }
+
+        .message.user .message-content {
+            background: #4a9eff;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: #2d2d2d;
+            color: #e0e0e0;
+        }
+
+        .streaming-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background: #4a9eff;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .thinking-container {
+            margin-top: 12px;
+            border: 1px solid #444;
+            border-radius: 8px;
+            background: #252525;
+            overflow: hidden;
+        }
+
+        .thinking-header {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: #333;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s ease;
+        }
+
+        .thinking-header:hover {
+            background: #3a3a3a;
+        }
+
+        .thinking-toggle {
+            margin-right: 8px;
+            transition: transform 0.2s ease;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .thinking-header-text {
+            font-size: 13px;
+            font-weight: 500;
+            color: #aaa;
+        }
+
+        .thinking-content {
+            padding: 12px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            line-height: 1.4;
+            font-size: 13px;
+            color: #999;
+            font-style: italic;
+        }
+
+        .thinking-content.expanded {
+            max-height: 500px;
+        }
+
+        .chat-input {
+            border-top: 1px solid #333;
+            padding: 20px 0;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .input-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #messageInput {
+            width: 100%;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 44px;
+            max-height: 120px;
+        }
+
+        #messageInput:focus {
+            outline: none;
+            border-color: #4a9eff;
+        }
+
+        #sendBtn {
+            background: #4a9eff;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 20px;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            font-size: 14px;
+        }
+
+        #sendBtn:hover {
+            background: #3a8ef0;
+        }
+
+        #sendBtn:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+
+        .demo-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2d2d2d;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 12px;
+        }
+
+        .demo-controls h3 {
+            color: #4a9eff;
+            margin-bottom: 8px;
+        }
+
+        .demo-controls label {
+            display: block;
+            margin-bottom: 8px;
+            color: #aaa;
+        }
+
+        .demo-controls input[type="range"] {
+            width: 100%;
+            margin-top: 4px;
+        }
+
+        .demo-controls button {
+            background: #444;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-top: 8px;
+            font-size: 11px;
+        }
+
+        .demo-controls button:hover {
+            background: #555;
+        }
+
+        /* Scrollbar styling */
+        .chat-history::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-history::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 3px;
+        }
+
+        .chat-history::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 CLIPPY Streaming Chat Demo</h1>
+            <p>Experience real-time streaming responses with thinking sections</p>
+        </div>
+        
+        <div class="chat-history" id="chatHistory">
+            <div class="message assistant">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content">
+                    <p>Hi! I'm CLIPPY, your AI assistant. I can demonstrate streaming responses with thinking sections. Try asking me something!</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chat-input">
+            <div class="input-container">
+                <textarea id="messageInput" placeholder="Type your message here..." rows="1"></textarea>
+            </div>
+            <button id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <div class="demo-controls">
+        <h3>🎛️ Demo Controls</h3>
+        <label>
+            Streaming Speed:
+            <input type="range" id="speedSlider" min="10" max="200" value="50">
+            <span id="speedValue">50ms</span>
+        </label>
+        <label>
+            Chunk Size:
+            <input type="range" id="chunkSlider" min="1" max="10" value="3">
+            <span id="chunkValue">3 words</span>
+        </label>
+        <div>
+            <button id="demoBtn1">Demo: Simple Response</button>
+            <button id="demoBtn2">Demo: With Thinking</button>
+            <button id="demoBtn3">Demo: Long Response</button>
+        </div>
+    </div>
+
+    <script>
+        class StreamingChatDemo {
+            constructor() {
+                this.chatHistory = document.getElementById('chatHistory');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.speedSlider = document.getElementById('speedSlider');
+                this.chunkSlider = document.getElementById('chunkSlider');
+                this.speedValue = document.getElementById('speedValue');
+                this.chunkValue = document.getElementById('chunkValue');
+                
+                this.streamingSpeed = 50;
+                this.chunkSize = 3;
+                
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                this.sendBtn.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.sendMessage();
+                    }
+                });
+                
+                this.speedSlider.addEventListener('input', (e) => {
+                    this.streamingSpeed = parseInt(e.target.value);
+                    this.speedValue.textContent = `${this.streamingSpeed}ms`;
+                });
+                
+                this.chunkSlider.addEventListener('input', (e) => {
+                    this.chunkSize = parseInt(e.target.value);
+                    this.chunkValue.textContent = `${this.chunkSize} words`;
+                });
+                
+                document.getElementById('demoBtn1').addEventListener('click', () => {
+                    this.addUserMessage('Tell me about artificial intelligence');
+                    this.simulateStreamingResponse('Artificial intelligence (AI) is a fascinating field that focuses on creating machines capable of intelligent behavior. It encompasses machine learning, neural networks, and deep learning techniques that enable computers to process information and make decisions similar to humans.');
+                });
+                
+                document.getElementById('demoBtn2').addEventListener('click', () => {
+                    this.addUserMessage('Explain quantum computing');
+                    this.simulateStreamingResponseWithThinking(
+                        'I need to explain quantum computing in a way that\'s accessible but accurate. Let me think about the key concepts: superposition, entanglement, and quantum gates. I should also mention the practical applications and current limitations.',
+                        'Quantum computing is a revolutionary computing paradigm that leverages quantum mechanical phenomena like superposition and entanglement. Unlike classical computers that use bits (0 or 1), quantum computers use quantum bits or "qubits" that can exist in multiple states simultaneously. This allows them to process vast amounts of information in parallel, potentially solving certain problems exponentially faster than classical computers. Current applications include cryptography, optimization, and drug discovery, though the technology is still in its early stages.'
+                    );
+                });
+                
+                document.getElementById('demoBtn3').addEventListener('click', () => {
+                    this.addUserMessage('Write a detailed explanation of machine learning');
+                    this.simulateStreamingResponse('Machine learning is a subset of artificial intelligence that focuses on creating algorithms and systems that can learn and improve from data without being explicitly programmed for each task. The field encompasses several key approaches: supervised learning, where models learn from labeled training data; unsupervised learning, which finds patterns in unlabeled data; and reinforcement learning, where agents learn through interaction with an environment. Popular algorithms include neural networks, decision trees, support vector machines, and ensemble methods. Modern deep learning, using multi-layered neural networks, has achieved breakthrough results in computer vision, natural language processing, and speech recognition. Applications span from recommendation systems and autonomous vehicles to medical diagnosis and financial fraud detection. The field continues to evolve rapidly with advances in hardware, algorithms, and the availability of large datasets.');
+                });
+            }
+
+            async sendMessage() {
+                const message = this.messageInput.value.trim();
+                if (!message) return;
+                
+                this.addUserMessage(message);
+                this.messageInput.value = '';
+                
+                // Simulate processing and response
+                const responses = [
+                    "I understand your question. Let me provide a comprehensive answer based on the information I have.",
+                    "That's an interesting topic! Here's what I can tell you about it.",
+                    "Great question! Let me break this down for you step by step.",
+                    "I'd be happy to help you with that. Here's my response:"
+                ];
+                
+                const response = responses[Math.floor(Math.random() * responses.length)];
+                await this.simulateStreamingResponse(response + " " + message.split(' ').reverse().join(' ') + " - this is a demo response that shows how streaming works in real-time chat applications.");
+            }
+
+            addUserMessage(content) {
+                const messageEl = document.createElement('div');
+                messageEl.className = 'message user';
+                messageEl.innerHTML = `
+                    <div class="message-avatar">👤</div>
+                    <div class="message-content">
+                        <p>${this.escapeHtml(content)}</p>
+                    </div>
+                `;
+                
+                this.chatHistory.appendChild(messageEl);
+                this.scrollToBottom();
+            }
+
+            async simulateStreamingResponse(content) {
+                const messageEl = this.createAssistantMessage();
+                const contentEl = messageEl.querySelector('.message-content');
+                const cursor = this.createStreamingCursor();
+                contentEl.appendChild(cursor);
+                
+                const words = content.split(' ');
+                let currentText = '';
+                
+                for (let i = 0; i < words.length; i += this.chunkSize) {
+                    const chunk = words.slice(i, i + this.chunkSize).join(' ');
+                    currentText += (currentText ? ' ' : '') + chunk;
+                    
+                    // Update content
+                    contentEl.innerHTML = `<p>${this.escapeHtml(currentText)}</p>`;
+                    contentEl.appendChild(cursor);
+                    
+                    this.scrollToBottom();
+                    await this.sleep(this.streamingSpeed);
+                }
+                
+                // Remove cursor when done
+                cursor.remove();
+                contentEl.innerHTML = `<p>${this.escapeHtml(currentText)}</p>`;
+            }
+
+            async simulateStreamingResponseWithThinking(thinkingContent, responseContent) {
+                const messageEl = this.createAssistantMessage();
+                const contentEl = messageEl.querySelector('.message-content');
+                
+                // Add thinking section first
+                const thinkingContainer = this.createThinkingSection(thinkingContent);
+                contentEl.appendChild(thinkingContainer);
+                
+                // Wait a bit to show thinking
+                await this.sleep(500);
+                
+                // Now stream the actual response
+                const cursor = this.createStreamingCursor();
+                const responseP = document.createElement('p');
+                contentEl.appendChild(responseP);
+                contentEl.appendChild(cursor);
+                
+                const words = responseContent.split(' ');
+                let currentText = '';
+                
+                for (let i = 0; i < words.length; i += this.chunkSize) {
+                    const chunk = words.slice(i, i + this.chunkSize).join(' ');
+                    currentText += (currentText ? ' ' : '') + chunk;
+                    
+                    responseP.textContent = currentText;
+                    this.scrollToBottom();
+                    await this.sleep(this.streamingSpeed);
+                }
+                
+                cursor.remove();
+            }
+
+            createAssistantMessage() {
+                const messageEl = document.createElement('div');
+                messageEl.className = 'message assistant';
+                messageEl.innerHTML = `
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content"></div>
+                `;
+                
+                this.chatHistory.appendChild(messageEl);
+                return messageEl;
+            }
+
+            createStreamingCursor() {
+                const cursor = document.createElement('span');
+                cursor.className = 'streaming-cursor';
+                return cursor;
+            }
+
+            createThinkingSection(content) {
+                const container = document.createElement('div');
+                container.className = 'thinking-container';
+                
+                const header = document.createElement('div');
+                header.className = 'thinking-header';
+                
+                const toggle = document.createElement('span');
+                toggle.className = 'thinking-toggle';
+                toggle.textContent = '▶';
+                
+                const headerText = document.createElement('span');
+                headerText.className = 'thinking-header-text';
+                headerText.textContent = '🤔 Thinking... (click to expand)';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'thinking-content';
+                contentDiv.textContent = content;
+                
+                header.appendChild(toggle);
+                header.appendChild(headerText);
+                container.appendChild(header);
+                container.appendChild(contentDiv);
+                
+                let isExpanded = false;
+                header.addEventListener('click', () => {
+                    isExpanded = !isExpanded;
+                    if (isExpanded) {
+                        contentDiv.classList.add('expanded');
+                        toggle.style.transform = 'rotate(90deg)';
+                        headerText.textContent = '🤔 Thinking... (click to hide)';
+                    } else {
+                        contentDiv.classList.remove('expanded');
+                        toggle.style.transform = 'rotate(0deg)';
+                        headerText.textContent = '🤔 Thinking... (click to expand)';
+                    }
+                });
+                
+                return container;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            scrollToBottom() {
+                this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
+            }
+
+            sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize the demo
+        new StreamingChatDemo();
+    </script>
+</body>
+</html>

@@ -6,6 +6,7 @@
 import { App, PluginSettingTab, Setting, Notice, Modal } from 'obsidian';
 import { ClippySettings, DEFAULT_SETTINGS, AI_MODELS } from './types';
 import { ProviderFactory } from './ai/provider-factory';
+import { SecureStorage, ContentSanitizer } from './utils/secure-storage';
 import ClippyPlugin from './main';
 
 export class ClippySettingsTab extends PluginSettingTab {
@@ -44,6 +45,12 @@ export class ClippySettingsTab extends PluginSettingTab {
 
     // Voice Settings
     this.addVoiceSection();
+    
+    // MoE System Settings
+    this.addMoESection();
+
+    // System Prompts Settings
+    this.addSystemPromptsSection();
 
     // Advanced Settings
     this.addAdvancedSection();
@@ -983,6 +990,83 @@ Format your response with clear headings and bullet points for each section.`;
             await this.plugin.saveSettings();
             this.display(); // Refresh the settings display
             new Notice('✅ Concept extraction prompt reset to default');
+          });
+      });
+  }
+
+  private addSystemPromptsSection(): void {
+    const containerEl = this.containerEl;
+    
+    containerEl.createEl('h2', { text: '🎭 System Prompts' });
+    containerEl.createEl('p', { 
+      text: 'Customize the system prompts used by CLIPPY and its expert agents. These control how the AI behaves and responds.',
+      cls: 'setting-item-description'
+    });
+
+    // Vault Agent System Prompt
+    containerEl.createEl('h3', { text: 'Vault Agent System Prompt' });
+    
+    new Setting(containerEl)
+      .setName('Main Vault Agent Prompt')
+      .setDesc('The core system prompt for the vault agent. Use {{toolsDescription}} placeholder for tool descriptions.')
+      .addTextArea(text => {
+        text
+          .setPlaceholder('Enter vault agent system prompt...')
+          .setValue(this.plugin.settings.research.prompts.vaultAgent)
+          .onChange(async (value) => {
+            this.plugin.settings.research.prompts.vaultAgent = value;
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.style.width = '100%';
+        text.inputEl.style.height = '200px';
+        text.inputEl.style.fontSize = '12px';
+        text.inputEl.style.fontFamily = 'var(--font-monospace)';
+      });
+
+    // MoE Expert Prompts
+    containerEl.createEl('h3', { text: 'MoE Expert System Prompts' });
+    
+    const expertPrompts = [
+      { key: 'fileOrganizationExpert', name: 'File Organization Expert', desc: 'Handles file placement, folder management, and vault structure' },
+      { key: 'searchNavigationExpert', name: 'Search & Navigation Expert', desc: 'Performs searches and navigation commands' },
+      { key: 'contentCreationExpert', name: 'Content Creation Expert', desc: 'Creates and structures content using templates' },
+      { key: 'vaultMaintenanceExpert', name: 'Vault Maintenance Expert', desc: 'Organizes and optimizes vault structure' },
+      { key: 'commandExecutionExpert', name: 'Command Execution Expert', desc: 'Translates user intents to Obsidian commands' },
+      { key: 'contextMemoryExpert', name: 'Context Memory Expert', desc: 'Learns and applies user patterns and preferences' }
+    ];
+
+    expertPrompts.forEach(expert => {
+      new Setting(containerEl)
+        .setName(expert.name)
+        .setDesc(expert.desc)
+        .addTextArea(text => {
+          text
+            .setPlaceholder(`Enter ${expert.name.toLowerCase()} system prompt...`)
+            .setValue((this.plugin.settings.research.prompts as any)[expert.key] || '')
+            .onChange(async (value) => {
+              (this.plugin.settings.research.prompts as any)[expert.key] = value;
+              await this.plugin.saveSettings();
+            });
+          text.inputEl.style.width = '100%';
+          text.inputEl.style.height = '150px';
+          text.inputEl.style.fontSize = '11px';
+          text.inputEl.style.fontFamily = 'var(--font-monospace)';
+        });
+    });
+
+    // Reset to defaults button
+    new Setting(containerEl)
+      .setName('Reset All System Prompts')
+      .setDesc('Reset all system prompts to their default values')
+      .addButton(button => {
+        button
+          .setButtonText('Reset to Defaults')
+          .setWarning()
+          .onClick(async () => {
+            // Reset to default prompts from DEFAULT_SETTINGS
+            this.plugin.settings.research.prompts = { ...DEFAULT_SETTINGS.research.prompts };
+            await this.plugin.saveSettings();
+            this.display(); // Refresh the settings display
           });
       });
   }
@@ -2074,6 +2158,213 @@ pip install piper-tts
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
+
+  private addMoESection(): void {
+    const { containerEl } = this;
+
+    containerEl.createEl('h3', { text: '🧠 MoE System Settings' });
+    containerEl.createEl('p', { 
+      text: 'Configure the Mixture of Experts system for intelligent vault assistance.',
+      cls: 'setting-item-description'
+    });
+
+    // Enable MoE System
+    new Setting(containerEl)
+      .setName('Enable MoE System')
+      .setDesc('Enable the vault-integrated Mixture of Experts system')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.features.moeSystemEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.features.moeSystemEnabled = value;
+            await this.plugin.saveSettings();
+            
+            if (value) {
+              new Notice('🧠 MoE System will initialize on next plugin load', 3000);
+            } else {
+              new Notice('MoE System disabled', 2000);
+            }
+            
+            // Refresh the settings display to show/hide MoE settings
+            this.display();
+          });
+      });
+
+    if (!this.plugin.settings.features.moeSystemEnabled) {
+      return; // Don't show other settings if MoE is disabled
+    }
+
+    containerEl.createEl('h4', { text: 'Embedding Settings' });
+
+    new Setting(containerEl)
+      .setName('Embedding Strategy')
+      .setDesc('How to handle note embeddings for semantic search')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('all', 'All notes (best quality)')
+          .addOption('tagged', 'Tagged notes only (performance)')
+          .addOption('smart', 'Smart selection (recommended)')
+          .setValue(this.plugin.settings.moe.embedding.strategy)
+          .onChange(async (value: 'all' | 'tagged' | 'smart') => {
+            this.plugin.settings.moe.embedding.strategy = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Cache Size')
+      .setDesc('Number of embeddings to keep in memory (higher = faster, more RAM)')
+      .addSlider(slider => {
+        slider
+          .setLimits(1000, 50000, 1000)
+          .setValue(this.plugin.settings.moe.embedding.cacheSize)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.moe.embedding.cacheSize = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Dynamic Cache Management')
+      .setDesc('Automatically manage cache size based on available memory')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.moe.embedding.enableDynamicCache)
+          .onChange(async (value) => {
+            this.plugin.settings.moe.embedding.enableDynamicCache = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    containerEl.createEl('h4', { text: 'Agent Settings' });
+
+    new Setting(containerEl)
+      .setName('Enable Personalization')
+      .setDesc('Let agents learn your vault patterns and preferences')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.moe.agents.enablePersonalization)
+          .onChange(async (value) => {
+            this.plugin.settings.moe.agents.enablePersonalization = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Agent Confidence Threshold')
+      .setDesc('Minimum confidence for agent routing (lower = more agents used)')
+      .addSlider(slider => {
+        slider
+          .setLimits(0.1, 1.0, 0.1)
+          .setValue(this.plugin.settings.moe.agents.confidenceThreshold)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.moe.agents.confidenceThreshold = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Max Agents Per Request')
+      .setDesc('Maximum number of agents to consult for each request')
+      .addSlider(slider => {
+        slider
+          .setLimits(1, 6, 1)
+          .setValue(this.plugin.settings.moe.agents.maxAgentsPerRequest)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.moe.agents.maxAgentsPerRequest = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    containerEl.createEl('h4', { text: 'Feedback & Health Settings' });
+
+    new Setting(containerEl)
+      .setName('Show Feedback Buttons')
+      .setDesc('Show thumbs up/down buttons on responses for learning')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.moe.feedback.showFeedbackButtons)
+          .onChange(async (value) => {
+            this.plugin.settings.moe.feedback.showFeedbackButtons = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Enable Health Monitoring')
+      .setDesc('Automatically check vault health and suggest improvements')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.moe.health.enablePeriodicChecks)
+          .onChange(async (value) => {
+            this.plugin.settings.moe.health.enablePeriodicChecks = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Auto-fix Minor Issues')
+      .setDesc('Automatically fix simple problems like broken links')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.moe.health.autoFixMinorIssues)
+          .onChange(async (value) => {
+            this.plugin.settings.moe.health.autoFixMinorIssues = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // System status if MoE is active
+    if ((this.plugin as any).moeOrchestrator) {
+      this.addMoESystemStatus();
+    }
+  }
+
+  private addMoESystemStatus(): void {
+    const { containerEl } = this;
+    const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+    
+    if (!moeOrchestrator) return;
+    
+    containerEl.createEl('h4', { text: 'System Status' });
+    
+    const status = moeOrchestrator.getSystemStatus();
+    const statusEl = containerEl.createEl('div', { cls: 'clippy-moe-status' });
+    
+    statusEl.createEl('p', { 
+      text: `Status: ${status.initialized ? '✅ Active' : '❌ Inactive'}` 
+    });
+    
+    statusEl.createEl('p', { 
+      text: `System Enabled: ${status.enabled ? '✅ Yes' : '❌ No'}` 
+    });
+    
+    statusEl.createEl('p', { 
+      text: `Available Experts: ${status.agentCount}` 
+    });
+    
+    statusEl.createEl('p', { 
+      text: `Average Response Time: ${status.responseTime}ms` 
+    });
+
+    // Reset button
+    new Setting(containerEl)
+      .setName('Reset MoE System')
+      .setDesc('Clear chat history and reset all learning data')
+      .addButton(button => {
+        button
+          .setButtonText('Reset MoE Data')
+          .setWarning()
+          .onClick(async () => {
+            await moeOrchestrator.resetSystem();
+            new Notice('🔄 MoE system data reset', 2000);
+            this.display(); // Refresh settings
+          });
+      });
+  }
 }
 
 /**
@@ -2096,13 +2387,17 @@ export class SettingsManager {
     // Run settings migration for new features
     const migratedSettings = this.migrateSettings(mergedSettings, data);
     
+    // Decrypt sensitive data
+    const decryptedSettings = SecureStorage.decryptSettings(migratedSettings);
+    
     // Save migrated settings if migration occurred
     if (this.needsMigration(data)) {
       console.log('[Settings Manager] Settings migrated to include new visualizer configs');
-      await this.plugin.saveData(migratedSettings);
+      // Save with encryption
+      await this.plugin.saveData(SecureStorage.encryptSettings(migratedSettings));
     }
     
-    return migratedSettings;
+    return decryptedSettings;
   }
 
   /**
@@ -2251,9 +2546,9 @@ export class SettingsManager {
    * Save settings with encryption for sensitive data
    */
   async saveSettings(settings: ClippySettings): Promise<void> {
-    // In a production plugin, you would encrypt API keys here
-    // For now, we're storing them as-is (Obsidian handles some security)
-    await this.plugin.saveData(settings);
+    // Encrypt sensitive data before saving
+    const encryptedSettings = SecureStorage.encryptSettings(settings);
+    await this.plugin.saveData(encryptedSettings);
   }
 
   /**
@@ -2269,12 +2564,20 @@ export class SettingsManager {
     }
 
     // Validate API keys for enabled cloud providers
-    if (settings.providers.openai.enabled && !settings.providers.openai.apiKey) {
-      errors.push('OpenAI API key is required when OpenAI is enabled');
+    if (settings.providers.openai.enabled) {
+      if (!settings.providers.openai.apiKey) {
+        errors.push('OpenAI API key is required when OpenAI is enabled');
+      } else if (!SecureStorage.validateApiKeyFormat(settings.providers.openai.apiKey, 'sk-')) {
+        errors.push('Invalid OpenAI API key format (should start with sk-)');
+      }
     }
 
-    if (settings.providers.anthropic.enabled && !settings.providers.anthropic.apiKey) {
-      errors.push('Anthropic API key is required when Anthropic is enabled');
+    if (settings.providers.anthropic.enabled) {
+      if (!settings.providers.anthropic.apiKey) {
+        errors.push('Anthropic API key is required when Anthropic is enabled');
+      } else if (!SecureStorage.validateApiKeyFormat(settings.providers.anthropic.apiKey, 'sk-ant-')) {
+        errors.push('Invalid Anthropic API key format (should start with sk-ant-)');
+      }
     }
 
     // Validate Ollama URL format

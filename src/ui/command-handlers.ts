@@ -178,6 +178,10 @@ export class CommandHandlers {
       callback: this.handleVaultAgentSidebar.bind(this),
     });
     
+    // Add MoE system commands if enabled
+    if (this.plugin.settings.features.moeSystemEnabled) {
+      this.addMoECommands();
+    }
 
     console.log('CLIPPY: All commands registered successfully');
   }
@@ -1682,3 +1686,184 @@ class ProgressModal extends Modal {
     this.currentProgress = null;
   }
 }
+
+// Add CommandHandlers extension for MoE
+declare module './command-handlers' {
+  interface CommandHandlers {
+    addMoECommands(): void;
+  }
+}
+
+CommandHandlers.prototype.addMoECommands = function(): void {
+  console.log('CLIPPY: Adding MoE commands...');
+  
+  // Main chat command
+  this.plugin.addCommand({
+    id: 'clippy-moe-chat',
+    name: 'Chat with Vault Expert (MoE)',
+    icon: 'message-circle',
+    callback: async () => {
+      const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+      if (!moeOrchestrator) {
+        new Notice('MoE system not initialized. Enable it in settings first.', 3000);
+        return;
+      }
+      
+      const input = prompt('What would you like help with?');
+      if (!input) return;
+      
+      try {
+        new Notice('Processing your request...', 2000);
+        const response = await moeOrchestrator.processUserInput(input);
+        
+        if (response.success) {
+          new Notice(`🤖 ${response.agent}: ${response.response.substring(0, 100)}...`, 8000);
+          console.log('MoE Response:', response);
+        } else {
+          new Notice(`❌ ${response.error}`, 5000);
+        }
+      } catch (error) {
+        new Notice(`❌ Failed: ${error.message}`, 3000);
+      }
+    },
+  });
+
+  // Analyze current note
+  this.plugin.addCommand({
+    id: 'clippy-moe-analyze-note',
+    name: 'Analyze Current Note (MoE)',
+    icon: 'search',
+    checkCallback: (checking: boolean) => {
+      const activeFile = this.plugin.app.workspace.getActiveFile();
+      if (checking) return !!activeFile;
+      
+      const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+      if (!moeOrchestrator) {
+        new Notice('MoE system not initialized', 3000);
+        return true;
+      }
+      
+      if (!activeFile) return true;
+      
+      (async () => {
+        try {
+          new Notice('Analyzing note...', 2000);
+          const response = await moeOrchestrator.processUserInput(
+            `Analyze the structure and content of "${activeFile.basename}" and suggest improvements`
+          );
+          
+          if (response.success) {
+            new Notice(`📊 ${response.agent}: ${response.response.substring(0, 100)}...`, 8000);
+            console.log('Analysis:', response);
+          } else {
+            new Notice(`❌ ${response.error}`, 5000);
+          }
+        } catch (error) {
+          new Notice(`❌ Analysis failed: ${error.message}`, 3000);
+        }
+      })();
+      
+      return true;
+    },
+  });
+
+  // Find similar notes
+  this.plugin.addCommand({
+    id: 'clippy-moe-find-similar',
+    name: 'Find Similar Notes (MoE)',
+    icon: 'link',
+    checkCallback: (checking: boolean) => {
+      const activeFile = this.plugin.app.workspace.getActiveFile();
+      if (checking) return !!activeFile;
+      
+      const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+      if (!moeOrchestrator) {
+        new Notice('MoE system not initialized', 3000);
+        return true;
+      }
+      
+      if (!activeFile) return true;
+      
+      (async () => {
+        try {
+          new Notice('Finding similar notes...', 2000);
+          const response = await moeOrchestrator.processUserInput(
+            `Find notes similar to "${activeFile.basename}" and suggest connections`
+          );
+          
+          if (response.success) {
+            new Notice(`🔗 ${response.agent}: ${response.response.substring(0, 100)}...`, 8000);
+            console.log('Similar notes:', response);
+          } else {
+            new Notice(`❌ ${response.error}`, 5000);
+          }
+        } catch (error) {
+          new Notice(`❌ Search failed: ${error.message}`, 3000);
+        }
+      })();
+      
+      return true;
+    },
+  });
+
+  // Vault health check
+  this.plugin.addCommand({
+    id: 'clippy-moe-vault-health',
+    name: 'Check Vault Health (MoE)',
+    icon: 'heart',
+    callback: async () => {
+      const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+      if (!moeOrchestrator) {
+        new Notice('MoE system not initialized', 3000);
+        return;
+      }
+      
+      try {
+        new Notice('Checking vault health...', 2000);
+        const health = await moeOrchestrator.getVaultHealth();
+        
+        const score = health.overallScore;
+        const emoji = score >= 80 ? '✅' : score >= 60 ? '⚠️' : '❌';
+        const status = score >= 80 ? 'Good' : score >= 60 ? 'Needs Attention' : 'Poor';
+        
+        new Notice(`🏥 Vault Health: ${emoji} ${score}/100 (${status})`, 5000);
+        console.log('Health Report:', health);
+        
+        if (health.issues.length > 0) {
+          console.log('Issues found:', health.issues);
+          new Notice(`💡 Issues: ${health.issues.join(', ')}`, 8000);
+        }
+      } catch (error) {
+        new Notice(`❌ Health check failed: ${error.message}`, 3000);
+      }
+    },
+  });
+
+  // Contextual suggestions
+  this.plugin.addCommand({
+    id: 'clippy-moe-suggestions',
+    name: 'Get Contextual Suggestions (MoE)',
+    icon: 'lightbulb',
+    callback: async () => {
+      const moeOrchestrator = (this.plugin as any).moeOrchestrator;
+      if (!moeOrchestrator) {
+        new Notice('MoE system not initialized', 3000);
+        return;
+      }
+      
+      try {
+        const suggestions = moeOrchestrator.getContextualSuggestions();
+        
+        if (suggestions.length === 0) {
+          new Notice('No suggestions available right now', 3000);
+          return;
+        }
+        
+        new Notice(`💡 Suggestion: ${suggestions[0]}`, 8000);
+        console.log('All suggestions:', suggestions);
+      } catch (error) {
+        new Notice(`❌ Failed to get suggestions: ${error.message}`, 3000);
+      }
+    },
+  });
+};

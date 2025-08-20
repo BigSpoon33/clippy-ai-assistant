@@ -60,6 +60,14 @@ export class VoiceVaultAgent extends VaultAgent {
   }
 
   /**
+   * Process message with streaming response (inherited from parent VaultAgent)
+   */
+  async* processMessageStreaming(message: string, context: AgentContext): AsyncGenerator<{type: 'text' | 'tool_result' | 'thinking', content: string}, void, unknown> {
+    // Delegate to parent class streaming method
+    yield* super.processMessageStreaming(message, context);
+  }
+
+  /**
    * Process text message with optional voice output
    */
   async processTextMessage(message: string, context: AgentContext, withVoice: boolean = false): Promise<VoiceResponse> {

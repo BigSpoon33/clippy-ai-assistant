@@ -6,6 +6,12 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"test": "jest",
+		"test:watch": "jest --watch",
+		"test:coverage": "jest --coverage",
+		"test:vad": "jest tests/voice-v2/utils/vad-engine.test.ts",
+		"test:visualizer": "jest tests/voice-v2/utils/audio-visualizer.test.ts",
+		"test:spectrum": "jest tests/voice-v2/components/spectrum-visualizer.test.ts",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [
@@ -28,12 +34,19 @@
 		"zod": "^3.25.76"
 	},
 	"devDependencies": {
+		"@testing-library/dom": "^10.4.1",
+		"@types/jest": "^30.0.0",
 		"@types/node": "^20.10.0",
 		"@typescript-eslint/eslint-plugin": "6.15.0",
 		"@typescript-eslint/parser": "6.15.0",
 		"builtin-modules": "3.3.0",
+		"canvas": "^3.1.2",
 		"esbuild": "0.19.10",
+		"jest": "^30.0.5",
+		"jest-environment-jsdom": "^30.0.5",
+		"jsdom": "^26.1.0",
 		"obsidian": "latest",
+		"ts-jest": "^29.4.1",
 		"tslib": "2.6.2",
 		"typescript": "5.3.3"
 	}

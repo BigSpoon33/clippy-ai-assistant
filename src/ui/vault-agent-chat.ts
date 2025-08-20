@@ -31,6 +31,12 @@ export class VaultAgentChatModal extends Modal {
       conversationHistory: [],
       sessionId: Date.now().toString(),
       workingDirectory: 'root',
+      recentlyMentionedFiles: [],
+      activeContext: {
+        lastCreatedFile: undefined,
+        lastMentionedFile: undefined,
+        currentWorkingFile: undefined
+      },
       ...initialContext
     };
 
@@ -361,7 +367,8 @@ Just ask me what you'd like to do with your vault!`;
       // Update context with current conversation
       this.context.conversationHistory = this.chatHistory.map(msg => ({
         role: msg.role,
-        content: msg.content
+        content: msg.content,
+        timestamp: new Date(msg.timestamp)
       }));
 
       // Process with vault agent
@@ -470,7 +477,13 @@ export class EnhancedAIChatModal extends VaultAgentChatModal {
     const context: AgentContext = {
       conversationHistory: [],
       sessionId: Date.now().toString(),
-      workingDirectory: 'root'
+      workingDirectory: 'root',
+      recentlyMentionedFiles: [],
+      activeContext: {
+        lastCreatedFile: undefined,
+        lastMentionedFile: undefined,
+        currentWorkingFile: undefined
+      }
     };
 
     // If we have a current file, add it to context

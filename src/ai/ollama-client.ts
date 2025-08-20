@@ -267,6 +267,23 @@ Focus on:
   }
 
   /**
+   * Get provider capabilities
+   */
+  getCapabilities(): {
+    generateResponse: boolean;
+    analyzeContent: boolean;
+    streaming: boolean;
+    maxTokens?: number;
+  } {
+    return {
+      generateResponse: true,
+      analyzeContent: true,
+      streaming: false, // Ollama streaming not implemented yet
+      maxTokens: 8192 // Typical Ollama context window
+    };
+  }
+
+  /**
    * Validate the Ollama configuration
    */
   validateConfig(): { valid: boolean; errors: string[] } {
