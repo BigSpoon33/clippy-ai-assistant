@@ -3,7 +3,7 @@
  * Tests for audioMotion-analyzer integration and spectrum visualization
  */
 
-import { TTSSpectrumVisualizer, SpectrumVisualizerConfig } from '../../../src/voice-v2/components/voice-indicators/spectrum-visualizer';
+import { TTSSpectrumVisualizer, SpectrumVisualizerConfig } from '../../../src/voice/components/voice-indicators/spectrum-visualizer';
 import AudioMotionAnalyzer from 'audiomotion-analyzer';
 
 // Mock HTML Audio element for tests

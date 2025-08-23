@@ -450,4 +450,68 @@ export class ClippyErrorBoundaries {
             recentErrors
         };
     }
+
+    /**
+     * Handle file system operations with error boundaries
+     */
+    static async fileSystemOperation<T>(
+        fn: () => Promise<T> | T,
+        context?: string,
+        fallback?: T
+    ): Promise<T | undefined> {
+        try {
+            return await fn();
+        } catch (error: any) {
+            ClippyErrorBoundaries.handleError(error, context || 'file system operation');
+            return fallback;
+        }
+    }
+
+    /**
+     * Handle AI provider operations with error boundaries
+     */
+    static async aiProviderOperation<T>(
+        fn: () => Promise<T> | T,
+        context?: string,
+        fallback?: T
+    ): Promise<T | undefined> {
+        try {
+            return await fn();
+        } catch (error: any) {
+            ClippyErrorBoundaries.handleError(error, context || 'AI provider operation');
+            return fallback;
+        }
+    }
+
+    /**
+     * Handle network operations with error boundaries
+     */
+    static async networkOperation<T>(
+        fn: () => Promise<T> | T,
+        context?: string,
+        fallback?: T
+    ): Promise<T | undefined> {
+        try {
+            return await fn();
+        } catch (error: any) {
+            ClippyErrorBoundaries.handleError(error, context || 'network operation');
+            return fallback;
+        }
+    }
+
+    /**
+     * Handle validation operations with error boundaries
+     */
+    static validationOperation<T>(
+        fn: () => T,
+        context?: string,
+        fallback?: T
+    ): T | undefined {
+        try {
+            return fn();
+        } catch (error: any) {
+            ClippyErrorBoundaries.handleError(error, context || 'validation operation');
+            return fallback;
+        }
+    }
 }

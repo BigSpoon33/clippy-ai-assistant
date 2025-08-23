@@ -35,12 +35,6 @@ export interface ClippySettings {
   
   // MoE System Settings
   moe: {
-    embedding: {
-      modelName: string;
-      strategy: 'all' | 'tagged' | 'smart';
-      cacheSize: number;
-      enableDynamicCache: boolean;
-    };
     agents: {
       enablePersonalization: boolean;
       confidenceThreshold: number;
@@ -82,7 +76,9 @@ export interface ClippySettings {
       outputFolder: string;
       template: string;
       showThinkingTags: boolean;
+      maxTokens: number; // Maximum tokens for AI responses in research generation
     };
+    // Moved to global RAG section
     prompts: {
       wisdomExtraction: string;
       conceptExtraction: string;
@@ -137,6 +133,55 @@ export interface ClippySettings {
       showTextWhenNoAudio: boolean;
     };
     visualizers: VoiceVisualizersConfig;
+  };
+
+  // ===== CENTRALIZED RAG SYSTEM =====
+  rag: {
+    embeddings: {
+      provider: 'ollama' | 'openai' | 'simple';
+      model: string;
+      ollamaUrl: string;
+      openaiApiKey: string;
+      dimensions: number;
+      maxTokens: number;
+      enableCache: boolean;
+      cacheSize: number;
+      cacheTTL: number; // Cache time-to-live in milliseconds
+    };
+    chunking: {
+      strategy: 'sentence' | 'semantic' | 'fixed' | 'hybrid';
+      chunkSize: number;
+      chunkOverlap: number;
+      maxChunkSize: number;
+      minChunkSize: number;
+      respectSentences: boolean;
+      respectParagraphs: boolean;
+    };
+    retrieval: {
+      maxResults: number;
+      minRelevanceScore: number;
+      enableHybridSearch: boolean;
+      enableReranking: boolean;
+      rerankingModel: string;
+      contextWindow: number;
+      enableMetadataFiltering: boolean;
+    };
+    storage: {
+      vectorDatabase: 'memory' | 'file' | 'external';
+      persistPath: string;
+      indexingBatchSize: number;
+      enableCompression: boolean;
+      enableBackup: boolean;
+    };
+    advanced: {
+      enableSemanticSearch: boolean;
+      enableKeywordSearch: boolean;
+      hybridSearchWeight: number; // 0.0-1.0, weight of semantic vs keyword
+      enableCitations: boolean;
+      enableSourceTracking: boolean;
+      maxContextLength: number;
+      contextTruncationStrategy: 'start' | 'end' | 'middle' | 'smart';
+    };
   };
 }
 
@@ -367,7 +412,7 @@ export interface PrivacySettings {
 // ===== DEFAULT SETTINGS =====
 
 export const DEFAULT_SETTINGS: ClippySettings = {
-  version: 2, // Current settings schema version (v2 includes visualizer configs)
+  version: 3, // Current settings schema version (v3 includes maxTokens for research)
   aiProvider: 'ollama',
   providers: {
     ollama: {
@@ -396,12 +441,6 @@ export const DEFAULT_SETTINGS: ClippySettings = {
   
   // MoE System Default Settings
   moe: {
-    embedding: {
-      modelName: 'all-MiniLM-L6-v2',
-      strategy: 'smart',
-      cacheSize: 10000,
-      enableDynamicCache: true,
-    },
     agents: {
       enablePersonalization: true,
       confidenceThreshold: 0.7,
@@ -443,7 +482,9 @@ export const DEFAULT_SETTINGS: ClippySettings = {
       outputFolder: 'Generated Research Notes',
       template: 'research-standard',
       showThinkingTags: false,
+      maxTokens: 0, // 0 = unlimited
     },
+    // RAG settings moved to centralized rag section
     prompts: {
       wisdomExtraction: `You are a research assistant extracting comprehensive information about "{{searchTerm}}".
 
@@ -680,6 +721,55 @@ EXECUTION PRINCIPLES:
       },
     },
   },
+
+  // ===== CENTRALIZED RAG SYSTEM DEFAULTS =====
+  rag: {
+    embeddings: {
+      provider: 'ollama',
+      model: 'nomic-embed-text',
+      ollamaUrl: 'http://localhost:11434',
+      openaiApiKey: '',
+      dimensions: 768,
+      maxTokens: 2048,
+      enableCache: true,
+      cacheSize: 10000,
+      cacheTTL: 24 * 60 * 60 * 1000, // 24 hours
+    },
+    chunking: {
+      strategy: 'semantic',
+      chunkSize: 1000,
+      chunkOverlap: 100,
+      maxChunkSize: 2000,
+      minChunkSize: 200,
+      respectSentences: true,
+      respectParagraphs: true,
+    },
+    retrieval: {
+      maxResults: 10,
+      minRelevanceScore: 0.7,
+      enableHybridSearch: true,
+      enableReranking: false,
+      rerankingModel: '',
+      contextWindow: 8192,
+      enableMetadataFiltering: true,
+    },
+    storage: {
+      vectorDatabase: 'memory',
+      persistPath: '.obsidian/plugins/clippy-ai-assistant/embeddings',
+      indexingBatchSize: 100,
+      enableCompression: false,
+      enableBackup: true,
+    },
+    advanced: {
+      enableSemanticSearch: true,
+      enableKeywordSearch: true,
+      hybridSearchWeight: 0.7, // 70% semantic, 30% keyword
+      enableCitations: true,
+      enableSourceTracking: true,
+      maxContextLength: 6000,
+      contextTruncationStrategy: 'smart',
+    },
+  },
 };
 
 // ===== CONSTANTS =====
@@ -694,6 +784,8 @@ export const COMMANDS = {
   CHAT_WITH_AI: 'clippy-chat',
   ANALYZE_VAULT: 'clippy-analyze-vault',
   DISCOVER_BRIDGES: 'clippy-discover-bridges',
+  SEMANTIC_SEARCH: 'clippy-semantic-search',
+  INTELLIGENT_BACKLINKS: 'clippy-intelligent-backlinks',
 } as const;
 
 export const AI_MODELS = {

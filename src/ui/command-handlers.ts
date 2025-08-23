@@ -7,12 +7,12 @@ import { Editor, MarkdownView, Notice, TFile, Modal } from 'obsidian';
 import ClippyPlugin from '../main';
 import { COMMANDS } from '../types';
 import { ProviderFactory } from '../ai/provider-factory';
-import { ContentAnalyzer } from '../processors/content-analyzer';
+import { ContentAnalyzer } from '../features/content-processing/processors/content-analyzer';
 import { AIEnhancementModal } from './ai-chat-modal';
 import { TagSuggestionModal } from './tag-suggestion-modal';
-import { OrphanDetector } from '../discovery/orphan-detector';
-import { EmbeddingManager } from '../semantic/embedding-manager';
-import { SimilarityEngine } from '../semantic/similarity-engine';
+import { OrphanDetector } from '../features/knowledge-management/discovery/orphan-detector';
+import { EmbeddingManager } from '../features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from '../features/knowledge-management/semantic/similarity-engine';
 import { BridgeManager } from './bridge-manager';
 import { AutomatedNoteGenerator } from '../research/automated-note-generator';
 import { NoteStatusMonitor } from '../research/note-status-monitor';
@@ -21,6 +21,10 @@ import { ClippyErrorBoundaries } from '../utils/error-boundaries';
 import { VaultAgentChatModal } from './vault-agent-chat';
 import { VoiceEnabledVaultChatModal } from './voice-vault-chat';
 import { VIEW_TYPE_VAULT_AGENT } from './vault-agent-sidebar-view';
+import { VIEW_TYPE_RESEARCH_AGENT } from './research-agent-sidebar-view';
+import { SemanticSearchModal } from '../features/search/semantic-search-integration';
+import { IntelligentBacklinkSystem } from '../features/knowledge-management/backlinking/intelligent-backlink-system';
+import { BacklinkSuggestionsModal } from './backlink-suggestions-modal';
 
 export class CommandHandlers {
   private plugin: ClippyPlugin;
@@ -123,13 +127,6 @@ export class CommandHandlers {
       editorCallback: this.handleMarkNoteCompleted.bind(this),
     });
 
-    // Show research project dashboard
-    this.plugin.addCommand({
-      id: 'clippy-research-dashboard',
-      name: 'Show research project dashboard',
-      icon: 'bar-chart-2',
-      callback: this.handleShowResearchDashboard.bind(this),
-    });
 
     // Comprehensive research system
     this.plugin.addCommand({
@@ -137,6 +134,22 @@ export class CommandHandlers {
       name: 'Comprehensive research with vault analysis and web search',
       icon: 'microscope',
       callback: this.handleComprehensiveResearch.bind(this),
+    });
+
+    // Semantic search
+    this.plugin.addCommand({
+      id: COMMANDS.SEMANTIC_SEARCH,
+      name: '🧠 Semantic Search - Find notes by meaning',
+      icon: 'brain',
+      hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'f' }], // Ctrl/Cmd + Shift + F
+      callback: this.handleSemanticSearch.bind(this),
+    });
+
+    this.plugin.addCommand({
+      id: COMMANDS.INTELLIGENT_BACKLINKS,
+      name: '🔗 Intelligent Backlinks - Smart link suggestions',
+      icon: 'link',
+      callback: this.handleIntelligentBacklinks.bind(this),
     });
 
     
@@ -177,6 +190,14 @@ export class CommandHandlers {
       icon: 'sidebar-left',
       callback: this.handleVaultAgentSidebar.bind(this),
     });
+
+    // Research Agent Sidebar - Primary Research Interface
+    this.plugin.addCommand({
+      id: 'clippy-research-agent-sidebar',
+      name: 'Show Research Agent Sidebar',
+      icon: 'microscope',
+      callback: this.handleResearchAgentSidebar.bind(this),
+    });
     
     // Add MoE system commands if enabled
     if (this.plugin.settings.features.moeSystemEnabled) {
@@ -184,6 +205,66 @@ export class CommandHandlers {
     }
 
     console.log('CLIPPY: All commands registered successfully');
+  }
+
+  /**
+   * Handle semantic search command
+   */
+  async handleSemanticSearch() {
+    try {
+      if (!this.plugin.semanticSearchService) {
+        new Notice('❌ Semantic search not available - embedding system not initialized');
+        return;
+      }
+
+      console.log('🧠 Opening semantic search modal...');
+      this.plugin.semanticSearchService.openSemanticSearch();
+    } catch (error) {
+      console.error('CLIPPY: Error opening semantic search:', error);
+      new Notice(`❌ Failed to open semantic search: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle intelligent backlinks command
+   */
+  async handleIntelligentBacklinks(): Promise<void> {
+    try {
+      console.log('🔗 Opening intelligent backlinks modal...');
+      
+      // Import the system and modal classes
+      const { IntelligentBacklinkSystem } = await import('../features/knowledge-management/backlinking/intelligent-backlink-system');
+      const { BacklinkSuggestionsModal } = await import('./backlink-suggestions-modal');
+      const { IntelligentSearchService } = await import('../features/knowledge-management/semantic/intelligent-search-service');
+      const { SimilarityEngine } = await import('../features/knowledge-management/semantic/similarity-engine');
+      
+      // Initialize required services
+      const similarityEngine = new SimilarityEngine(this.plugin.embeddingManager);
+      
+      const intelligentSearchService = new IntelligentSearchService(
+        this.plugin.app,
+        this.plugin.embeddingManager,
+        similarityEngine,
+        this.plugin.settings
+      );
+      
+      // Initialize the backlink system
+      const backlinkSystem = new IntelligentBacklinkSystem(
+        this.plugin.app,
+        intelligentSearchService,
+        this.plugin.embeddingManager,
+        similarityEngine,
+        this.plugin.settings
+      );
+      
+      // Open the suggestions modal
+      const modal = new BacklinkSuggestionsModal(this.plugin.app, backlinkSystem);
+      modal.open();
+      
+    } catch (error) {
+      console.error('CLIPPY: Error opening intelligent backlinks:', error);
+      new Notice(`❌ Failed to open intelligent backlinks: ${error.message}`);
+    }
   }
 
   /**
@@ -211,7 +292,8 @@ export class CommandHandlers {
         { showUserNotice: true }
       );
       
-      const vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
+      // Use shared vault patterns, fallback to analysis if not available
+      const vaultPatterns = this.plugin.vaultPatterns || await ClippyErrorBoundaries.aiProviderOperation(
         () => this.plugin.vaultAnalyzer.analyzeVaultPatterns(),
         'analyze vault patterns',
         {
@@ -308,7 +390,8 @@ export class CommandHandlers {
         { showUserNotice: true }
       );
       
-      const vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
+      // Use shared vault patterns, fallback to analysis if not available
+      const vaultPatterns = this.plugin.vaultPatterns || await ClippyErrorBoundaries.aiProviderOperation(
         () => this.plugin.vaultAnalyzer.analyzeVaultPatterns(),
         'analyze vault patterns for tagging',
         {
@@ -323,7 +406,7 @@ export class CommandHandlers {
         }
       );
       
-      const autoTagger = new (await import('../processors/auto-tagger')).AutoTagger(aiProvider, vaultPatterns);
+      const autoTagger = new (await import('../features/content-processing/processors/auto-tagger')).AutoTagger(aiProvider, vaultPatterns);
 
       const existingTags = this.extractExistingTags(content);
       const suggestions = await ClippyErrorBoundaries.aiProviderOperation(
@@ -504,8 +587,8 @@ export class CommandHandlers {
       const notice = new Notice('Formatting note...', 0);
 
       const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const vaultPatterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
-      const formatter = new (await import('../processors/markdown-formatter')).MarkdownFormatter(aiProvider, vaultPatterns);
+      const vaultPatterns = this.plugin.vaultPatterns || await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
+      const formatter = new (await import('../features/content-processing/processors/markdown-formatter')).MarkdownFormatter(aiProvider, vaultPatterns);
 
       const result = await formatter.enhanceNote(content);
 
@@ -554,7 +637,7 @@ export class CommandHandlers {
       const notice = new Notice('Generating content suggestions...', 0);
 
       const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const vaultPatterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
+      const vaultPatterns = this.plugin.vaultPatterns || await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
       const analyzer = new ContentAnalyzer(aiProvider, vaultPatterns);
 
       const suggestions = await analyzer.generateContentSuggestions(content);
@@ -593,7 +676,7 @@ export class CommandHandlers {
       const notice = new Notice('Generating insights...', 0);
 
       const aiProvider = await ProviderFactory.createProvider(this.plugin.settings);
-      const vaultPatterns = await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
+      const vaultPatterns = this.plugin.vaultPatterns || await this.plugin.vaultAnalyzer.analyzeVaultPatterns();
       const analyzer = new ContentAnalyzer(aiProvider, vaultPatterns);
 
       const insights = await analyzer.getQuickInsights(content);
@@ -686,11 +769,9 @@ export class CommandHandlers {
     try {
       const notice = new Notice('🔍 Discovering bridge opportunities...', 0);
 
-      // Initialize components
-      const orphanDetector = new OrphanDetector(this.plugin.app.vault, this.plugin.app.metadataCache);
-      const embeddingManager = new EmbeddingManager();
-      const similarityEngine = new SimilarityEngine(embeddingManager);
-      const bridgeManager = new BridgeManager(this.plugin.app, orphanDetector, embeddingManager, similarityEngine);
+      // Initialize components using shared instances
+      const orphanDetector = new OrphanDetector(this.plugin.app.vault, this.plugin.app.metadataCache, this.plugin.embeddingManager, this.plugin.similarityEngine);
+      const bridgeManager = new BridgeManager(this.plugin.app, orphanDetector, this.plugin.embeddingManager, this.plugin.similarityEngine);
 
       // Get bridge opportunities
       const bridges = await bridgeManager.getBridgeOpportunities();
@@ -719,7 +800,7 @@ export class CommandHandlers {
     try {
       // Show checklist input modal with updated settings
       const modal = new ResearchChecklistModal(this.plugin.app, this.plugin.settings, async (checklist, options) => {
-        const generator = new AutomatedNoteGenerator(this.plugin.app);
+        const generator = new AutomatedNoteGenerator(this.plugin.app, this.plugin.projectTracker);
         
         // Configure search engine based on settings
         const searchConfig = this.plugin.settings.research.searchEngine;
@@ -753,8 +834,8 @@ export class CommandHandlers {
         return;
       }
 
-      const generator = new AutomatedNoteGenerator(this.plugin.app);
-      const statusMonitor = new NoteStatusMonitor(this.plugin.app, generator.getProjectTracker());
+      const generator = new AutomatedNoteGenerator(this.plugin.app, this.plugin.projectTracker);
+      const statusMonitor = new NoteStatusMonitor(this.plugin.app, this.plugin.projectTracker);
       
       const success = await statusMonitor.markNoteCompleted(file.path);
       if (success) {
@@ -767,21 +848,6 @@ export class CommandHandlers {
     }
   }
 
-  /**
-   * Handle showing research project dashboard.
-   */
-  async handleShowResearchDashboard(): Promise<void> {
-    try {
-      const generator = new AutomatedNoteGenerator(this.plugin.app);
-      const statusMonitor = new NoteStatusMonitor(this.plugin.app, generator.getProjectTracker());
-      
-      statusMonitor.showCompletionDashboard();
-
-    } catch (error) {
-      console.error('CLIPPY: Error showing research dashboard:', error);
-      new Notice(`❌ Failed to show research dashboard: ${error.message}`);
-    }
-  }
 
   /**
    * Handle comprehensive research system.
@@ -953,6 +1019,39 @@ export class CommandHandlers {
     }
   }
 
+  /**
+   * Handle research agent sidebar command
+   */
+  async handleResearchAgentSidebar(): Promise<void> {
+    try {
+      // Check if sidebar view is already open
+      const existingLeaf = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_RESEARCH_AGENT).first();
+      
+      if (existingLeaf) {
+        // Reveal existing sidebar
+        this.plugin.app.workspace.revealLeaf(existingLeaf);
+        return;
+      }
+
+      // Open new sidebar view
+      const leaf = this.plugin.app.workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: VIEW_TYPE_RESEARCH_AGENT,
+          active: true
+        });
+        
+        // Reveal the sidebar
+        this.plugin.app.workspace.revealLeaf(leaf);
+        new Notice('🔬 Research Agent sidebar opened');
+      }
+
+    } catch (error) {
+      console.error('CLIPPY: Error opening research agent sidebar:', error);
+      new Notice(`Failed to open research agent sidebar: ${error.message}`);
+    }
+  }
+
 }
 
 /**
@@ -1040,10 +1139,7 @@ Ashwagandha`;
     templateSelect.style.cssText = 'width: 100%; padding: 6px; margin-top: 4px;';
     
     const templates = [
-      { value: 'research-standard', text: 'Research Standard (Comprehensive)' },
-      { value: 'herb-profile', text: 'Herb Profile (Botanical focus)' },
-      { value: 'medical', text: 'Medical Research (Health focus)' },
-      { value: 'simple', text: 'Simple (Minimal sections)' }
+      { value: 'research-standard', text: 'Research Standard (Comprehensive)' }
     ];
     
     templates.forEach(template => {
@@ -1221,13 +1317,25 @@ class ComprehensiveResearchModal extends Modal {
     webSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
     const webSearchInput = webSearchCheck.createEl('input', { type: 'checkbox' });
     webSearchInput.checked = true;
-    webSearchCheck.createEl('span', { text: 'Enable web search and save individual pages' });
+    webSearchCheck.createEl('span', { text: 'Enable web search' });
+
+    const saveIndividualPagesCheck = searchOptionsEl.createEl('label');
+    saveIndividualPagesCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px; margin-left: 20px;';
+    const saveIndividualPagesInput = saveIndividualPagesCheck.createEl('input', { type: 'checkbox' });
+    saveIndividualPagesInput.checked = true;
+    saveIndividualPagesCheck.createEl('span', { text: 'Save individual web pages' });
 
     const vaultSearchCheck = searchOptionsEl.createEl('label');
     vaultSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
     const vaultSearchInput = vaultSearchCheck.createEl('input', { type: 'checkbox' });
     vaultSearchInput.checked = true;
     vaultSearchCheck.createEl('span', { text: 'Search vault for notes with exact words' });
+
+    const semanticSearchCheck = searchOptionsEl.createEl('label');
+    semanticSearchCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px; margin-left: 20px;';
+    const semanticSearchInput = semanticSearchCheck.createEl('input', { type: 'checkbox' });
+    semanticSearchInput.checked = false;
+    semanticSearchCheck.createEl('span', { text: 'Enable semantic search' });
 
     const aiEnhanceCheck = searchOptionsEl.createEl('label');
     aiEnhanceCheck.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 8px;';
@@ -1266,7 +1374,9 @@ class ComprehensiveResearchModal extends Modal {
 ---
 title: {{title}}
 created: {{today}}
-tags: [research, {{title}}]
+tags:
+  - research
+  - "{{title}}"
 ---
 
 # {{title}}
@@ -1422,9 +1532,11 @@ tags: [research, {{title}}]
       const options = {
         outputFolder: folderInput.value || 'Comprehensive Research',
         enableWebSearch: webSearchInput.checked,
-        enableVaultSearch: vaultSearchInput.checked,
-        enableAIEnhance: aiEnhanceInput.checked,
-        maxWebResults: parseInt(maxResultsInput.value) || 10,
+        saveIndividualPages: saveIndividualPagesInput.checked,
+        searchVaultExactWords: vaultSearchInput.checked,
+        enableSemanticSearch: semanticSearchInput.checked,
+        aiEnhanceFinalNote: aiEnhanceInput.checked,
+        maxWebSearchResults: parseInt(maxResultsInput.value) || 10,
         customTemplate: customTemplate || null,
         projectName: `Comprehensive Research: ${new Date().toLocaleDateString()}`,
         projectDescription: `Systematic research with vault analysis and web search for ${items.length} topics`
@@ -1866,4 +1978,4 @@ CommandHandlers.prototype.addMoECommands = function(): void {
       }
     },
   });
-};
+}

@@ -3,9 +3,9 @@
  * Voice Activity Detection widget for vault agent interfaces
  */
 
-import { AudioRecorder } from '../../../voice-v2/utils/audio-recorder';
-import { VADIndicator, VADIndicatorConfig } from '../../../voice-v2/components/voice-indicators/vad-indicator';
-import { VoiceConfiguration, AudioVisualizerData, VADConfig } from '../../../voice-v2/types/voice-types';
+import { AudioRecorder } from '../../../voice/utils/audio-recorder';
+import { VADIndicator, VADIndicatorConfig } from '../../../voice/components/voice-indicators/vad-indicator';
+import { VoiceConfiguration, AudioVisualizerData, VADConfig } from '../../../voice/types/voice-types';
 
 export interface VADWidgetConfig {
     enabled: boolean;

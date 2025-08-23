@@ -18,12 +18,44 @@ export function processThinkingTags(content: string, options: ThinkingTagsOption
     return content
       .replace(/<thinking>/gi, '\n\n**🤔 AI Thinking Process:**\n> ')
       .replace(/<\/thinking>/gi, '\n\n')
+      .replace(/<think>/gi, '\n\n**🤔 AI Thinking Process:**\n> ')
+      .replace(/<\/think>/gi, '\n\n')
       .replace(/\n\n+/g, '\n\n')
       .trim();
   } else {
-    // Remove thinking tags completely
-    return content
-      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    // Remove both <thinking> and <think> tags completely - AGGRESSIVE removal
+    let cleaned = content;
+    
+    // Multiple passes to handle nested tags and edge cases
+    for (let i = 0; i < 5; i++) {
+      const beforeClean = cleaned;
+      
+      cleaned = cleaned
+        // Remove ALL content between tags (both greedy and non-greedy)
+        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')  // Non-greedy
+        .replace(/<thinking>[\s\S]*<\/thinking>/gi, '')   // Greedy for nested
+        .replace(/<think>[\s\S]*?<\/think>/gi, '')       // Non-greedy
+        .replace(/<think>[\s\S]*<\/think>/gi, '')        // Greedy for nested
+        
+        // Handle malformed tags
+        .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+        .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+        
+        // Handle missing closing tags
+        .replace(/<thinking>[\s\S]*$/gi, '')
+        .replace(/<think>[\s\S]*$/gi, '')
+        
+        // Clean up orphaned tags
+        .replace(/<\/thinking>/gi, '')
+        .replace(/<\/think>/gi, '')
+        .replace(/<thinking[^>]*>/gi, '')
+        .replace(/<think[^>]*>/gi, '');
+      
+      // Break if no changes
+      if (cleaned === beforeClean) break;
+    }
+    
+    return cleaned
       .replace(/\n\n+/g, '\n\n')
       .trim();
   }

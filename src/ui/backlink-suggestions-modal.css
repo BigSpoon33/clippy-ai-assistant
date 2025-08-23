@@ -1,0 +1,231 @@
+/**
+ * Styles for Intelligent Backlink Suggestions Modal
+ */
+
+.backlink-loading {
+    text-align: center;
+    padding: 2em;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.backlink-empty-state {
+    text-align: center;
+    padding: 3em 2em;
+    color: var(--text-muted);
+    background: var(--background-secondary);
+    border-radius: 8px;
+    margin: 1em 0;
+}
+
+.backlink-stats {
+    background: var(--background-secondary);
+    padding: 1em;
+    border-radius: 8px;
+    margin: 1em 0;
+    text-align: center;
+}
+
+.backlink-controls {
+    display: flex;
+    gap: 0.5em;
+    margin: 1em 0;
+    padding: 0.5em 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.backlink-controls button {
+    font-size: 0.9em;
+    padding: 0.3em 0.8em;
+}
+
+.backlink-suggestions-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    margin: 1em 0;
+    padding-right: 0.5em;
+}
+
+.backlink-suggestion-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8em;
+    padding: 1em;
+    margin: 0.5em 0;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.backlink-suggestion-item:hover {
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-accent);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.backlink-suggestion-item input[type="checkbox"] {
+    margin-top: 0.3em;
+    transform: scale(1.2);
+}
+
+.backlink-suggestion-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.backlink-suggestion-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+    font-size: 1em;
+}
+
+.backlink-arrow {
+    color: var(--interactive-accent);
+    font-weight: bold;
+    font-size: 1.2em;
+}
+
+.backlink-confidence {
+    font-size: 0.85em;
+    font-weight: bold;
+    padding: 0.2em 0.5em;
+    border-radius: 12px;
+    margin-left: auto;
+}
+
+.confidence-excellent {
+    background: rgba(46, 160, 67, 0.2);
+    color: var(--color-green);
+}
+
+.confidence-high {
+    background: rgba(26, 127, 55, 0.2);
+    color: var(--color-green);
+}
+
+.confidence-good {
+    background: rgba(255, 193, 7, 0.2);
+    color: var(--color-yellow);
+}
+
+.confidence-medium {
+    background: rgba(255, 159, 10, 0.2);
+    color: var(--color-orange);
+}
+
+.backlink-suggestion-details {
+    margin-bottom: 0.5em;
+}
+
+.backlink-reason {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.3em;
+    font-size: 0.9em;
+    color: var(--text-muted);
+}
+
+.backlink-type-badge {
+    font-size: 0.8em;
+    font-weight: 500;
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    text-transform: capitalize;
+}
+
+.backlink-type-badge.semantic {
+    background: rgba(138, 43, 226, 0.2);
+    color: var(--color-purple);
+}
+
+.backlink-type-badge.title-mention {
+    background: rgba(30, 144, 255, 0.2);
+    color: var(--color-blue);
+}
+
+.backlink-type-badge.tag-shared {
+    background: rgba(255, 140, 0, 0.2);
+    color: var(--color-orange);
+}
+
+.backlink-type-badge.concept-related {
+    background: rgba(50, 205, 50, 0.2);
+    color: var(--color-green);
+}
+
+.backlink-context {
+    font-style: italic;
+    font-size: 0.85em;
+    color: var(--text-faint);
+    background: var(--background-primary);
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    border-left: 3px solid var(--interactive-accent);
+    margin-top: 0.3em;
+}
+
+.backlink-preview {
+    font-family: var(--font-monospace);
+    font-size: 0.85em;
+    background: var(--background-primary);
+    padding: 0.3em 0.5em;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+}
+
+.backlink-actions {
+    display: flex;
+    gap: 0.8em;
+    justify-content: flex-end;
+    margin-top: 1.5em;
+    padding-top: 1em;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.backlink-actions button {
+    padding: 0.6em 1.5em;
+    font-size: 0.95em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .backlink-suggestion-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3em;
+    }
+    
+    .backlink-confidence {
+        margin-left: 0;
+        align-self: flex-start;
+    }
+    
+    .backlink-controls {
+        flex-wrap: wrap;
+    }
+    
+    .backlink-actions {
+        flex-direction: column;
+    }
+}
+
+/* Dark theme adjustments */
+.theme-dark .backlink-suggestion-item:hover {
+    box-shadow: 0 2px 8px rgba(255,255,255,0.05);
+}
+
+/* Animation for applying suggestions */
+@keyframes backlink-apply {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.backlink-applying {
+    animation: backlink-apply 0.3s ease-in-out;
+}

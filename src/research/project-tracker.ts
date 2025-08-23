@@ -1,12 +1,23 @@
 import { App, TFile, Notice } from 'obsidian';
 
+interface ResearchSettings {
+    outputFolder: string;
+    enableWebSearch: boolean;
+    saveIndividualPages: boolean;
+    searchVaultExactWords: boolean;
+    enableSemanticSearch: boolean;
+    aiEnhanceFinalNote: boolean;
+    maxWebSearchResults: number;
+    customTemplate: string;
+}
+
 interface ResearchProject {
     id: string;
     name: string;
     description: string;
     checklist: ChecklistItem[];
     createdAt: Date;
-    status: 'processing' | 'completed' | 'cancelled';
+    status: 'processing' | 'completed' | 'cancelled' | 'paused' | 'archived';
     progress: {
         total: number;
         completed: number;
@@ -15,6 +26,7 @@ interface ResearchProject {
     outputFolder: string;
     template: string;
     generatedNotes: GeneratedNoteInfo[];
+    settings: ResearchSettings;
 }
 
 interface ChecklistItem {
@@ -37,6 +49,8 @@ interface GeneratedNoteInfo {
     projectTag: string;
 }
 
+export { ResearchSettings, ResearchProject, ChecklistItem, GeneratedNoteInfo };
+
 export class ProjectTracker {
     private app: App;
     private projects: Map<string, ResearchProject> = new Map();
@@ -58,6 +72,18 @@ export class ProjectTracker {
     ): Promise<string> {
         const projectId = this.generateProjectId();
         
+        // Create default research settings
+        const defaultSettings: ResearchSettings = {
+            outputFolder: options.outputFolder || 'Generated Research Notes',
+            enableWebSearch: options.enableWebSearch !== false, // Default to true
+            saveIndividualPages: options.saveIndividualPages !== false, // Default to true
+            searchVaultExactWords: options.searchVaultExactWords !== false, // Default to true
+            enableSemanticSearch: options.enableSemanticSearch || false, // Default to false
+            aiEnhanceFinalNote: options.aiEnhanceFinalNote !== false, // Default to true
+            maxWebSearchResults: options.maxWebSearchResults || 5,
+            customTemplate: options.noteTemplate || 'research-standard'
+        };
+
         const project: ResearchProject = {
             id: projectId,
             name: name || `Research Project ${new Date().toLocaleDateString()}`,
@@ -77,9 +103,10 @@ export class ProjectTracker {
                 completed: 0,
                 failed: 0
             },
-            outputFolder: options.outputFolder || 'Generated Research Notes',
-            template: options.noteTemplate || 'research-standard',
-            generatedNotes: []
+            outputFolder: defaultSettings.outputFolder,
+            template: defaultSettings.customTemplate,
+            generatedNotes: [],
+            settings: defaultSettings
         };
 
         this.projects.set(projectId, project);
@@ -347,10 +374,19 @@ export class ProjectTracker {
     }
 
     /**
-     * Get all active projects.
+     * Get all active projects (processing, paused, and completed).
      */
     getActiveProjects(): ResearchProject[] {
-        return Array.from(this.projects.values()).filter(p => p.status === 'processing');
+        return Array.from(this.projects.values()).filter(p => 
+            p.status === 'processing' || p.status === 'paused' || p.status === 'completed'
+        );
+    }
+
+    /**
+     * Get all archived projects.
+     */
+    getArchivedProjects(): ResearchProject[] {
+        return Array.from(this.projects.values()).filter(p => p.status === 'archived');
     }
 
     /**
@@ -392,17 +428,32 @@ export class ProjectTracker {
             if (data) {
                 const projectsData = JSON.parse(data);
                 this.projects = new Map(
-                    Object.entries(projectsData).map(([id, project]: [string, any]) => [
-                        id,
-                        {
+                    Object.entries(projectsData).map(([id, project]: [string, any]) => {
+                        const loadedProject = {
                             ...project,
                             createdAt: new Date(project.createdAt),
                             generatedNotes: project.generatedNotes.map((note: any) => ({
                                 ...note,
                                 createdAt: new Date(note.createdAt)
                             }))
+                        };
+
+                        // Add backward compatibility for projects without settings
+                        if (!loadedProject.settings) {
+                            loadedProject.settings = {
+                                outputFolder: loadedProject.outputFolder || 'Generated Research Notes',
+                                enableWebSearch: true,
+                                saveIndividualPages: true,
+                                searchVaultExactWords: true,
+                                enableSemanticSearch: false,
+                                aiEnhanceFinalNote: true,
+                                maxWebSearchResults: 5,
+                                customTemplate: loadedProject.template || 'research-standard'
+                            };
                         }
-                    ])
+
+                        return [id, loadedProject];
+                    })
                 );
                 console.log(`📂 Loaded ${this.projects.size} research projects`);
             }
@@ -442,5 +493,338 @@ export class ProjectTracker {
             await this.saveProjects();
             console.log(`🧹 Cleaned up ${removedCount} old completed projects`);
         }
+    }
+
+    /**
+     * Pause a project
+     */
+    async pauseProject(projectId: string): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        project.status = 'paused';
+        await this.saveProjects();
+        console.log(`⏸️ Paused project: ${projectId}`);
+    }
+
+    /**
+     * Resume a paused project
+     */
+    async resumeProject(projectId: string): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        project.status = 'processing';
+        await this.saveProjects();
+        console.log(`▶️ Resumed project: ${projectId}`);
+    }
+
+    /**
+     * Rename a project
+     */
+    async renameProject(projectId: string, newName: string): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        const oldName = project.name;
+        project.name = newName.trim();
+        await this.saveProjects();
+        console.log(`📝 Renamed project ${projectId} from "${oldName}" to "${newName}"`);
+    }
+
+    /**
+     * Add topics (checklist items) to an existing project
+     */
+    async addTopicsToProject(projectId: string, topics: string[]): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        const newItems: ChecklistItem[] = topics.map((topic, index) => ({
+            id: `${projectId}-topic-${Date.now()}-${index}`,
+            name: topic.trim(),
+            searchTerms: [topic.trim()],
+            category: 'Research',
+            priority: 'medium',
+            status: 'pending'
+        }));
+
+        project.checklist.push(...newItems);
+        project.progress.total += newItems.length;
+        
+        await this.saveProjects();
+        console.log(`➕ Added ${newItems.length} topics to project: ${projectId}`);
+    }
+
+    /**
+     * Get project files for deletion confirmation
+     */
+    getProjectFiles(projectId: string): string[] {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            return [];
+        }
+
+        const files: string[] = [];
+        
+        // Add all generated note files
+        project.generatedNotes.forEach(note => {
+            files.push(note.filePath);
+        });
+
+        // Add any checklist item note files
+        project.checklist.forEach(item => {
+            if (item.noteId) {
+                files.push(item.noteId);
+            }
+        });
+
+        return files;
+    }
+
+    /**
+     * Get project files and folders for deletion (including web search folders)
+     */
+    getProjectFilesAndFolders(projectId: string): { files: string[], folders: string[] } {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            return { files: [], folders: [] };
+        }
+
+        const files: string[] = [];
+        const folders: string[] = [];
+        
+        // Add all generated note files
+        project.generatedNotes.forEach(note => {
+            files.push(note.filePath);
+        });
+
+        // Add any checklist item note files
+        project.checklist.forEach(item => {
+            if (item.noteId) {
+                files.push(item.noteId);
+            }
+        });
+
+        // Add web search folders for each checklist item
+        project.checklist.forEach(item => {
+            const webSearchFolder = `${project.outputFolder}/Web Search - ${this.sanitizeFileName(item.name)}`;
+            folders.push(webSearchFolder);
+        });
+
+        return { files, folders };
+    }
+
+    /**
+     * Sanitize filename for folder creation (same logic as comprehensive research system)
+     */
+    private sanitizeFileName(name: string): string {
+        return name
+            .replace(/[^\w\s-]/g, '') // Remove special characters except word chars, spaces, and hyphens
+            .replace(/\s+/g, '-') // Replace spaces with hyphens
+            .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+            .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+            .substring(0, 100); // Limit length
+    }
+
+    /**
+     * Delete project files
+     */
+    async deleteProjectFiles(projectId: string): Promise<void> {
+        const { files, folders } = this.getProjectFilesAndFolders(projectId);
+        let deletedFilesCount = 0;
+        let deletedFoldersCount = 0;
+
+        // Delete individual files
+        for (const filePath of files) {
+            try {
+                const file = this.app.vault.getAbstractFileByPath(filePath);
+                if (file) {
+                    await this.app.vault.delete(file);
+                    deletedFilesCount++;
+                    console.log(`🗑️ Deleted project file: ${filePath}`);
+                }
+            } catch (error) {
+                console.warn(`Failed to delete file ${filePath}:`, error);
+            }
+        }
+
+        // Delete web search folders and their contents
+        for (const folderPath of folders) {
+            try {
+                const folder = this.app.vault.getAbstractFileByPath(folderPath);
+                if (folder && folder.children) {
+                    // Delete all files in the folder first
+                    const folderFiles = folder.children.filter(child => child.path.endsWith('.md'));
+                    for (const file of folderFiles) {
+                        try {
+                            await this.app.vault.delete(file);
+                            deletedFilesCount++;
+                            console.log(`🗑️ Deleted web search file: ${file.path}`);
+                        } catch (error) {
+                            console.warn(`Failed to delete web search file ${file.path}:`, error);
+                        }
+                    }
+                    
+                    // Then delete the folder itself
+                    await this.app.vault.delete(folder);
+                    deletedFoldersCount++;
+                    console.log(`🗑️ Deleted web search folder: ${folderPath}`);
+                }
+            } catch (error) {
+                console.warn(`Failed to delete folder ${folderPath}:`, error);
+            }
+        }
+
+        console.log(`🗑️ Deleted ${deletedFilesCount} files and ${deletedFoldersCount} folders for project: ${projectId}`);
+    }
+
+    /**
+     * Update project settings
+     */
+    async updateProjectSettings(projectId: string, newSettings: Partial<ResearchSettings>): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        // Update settings
+        project.settings = { ...project.settings, ...newSettings };
+        
+        // Update legacy fields for backward compatibility
+        if (newSettings.outputFolder) {
+            project.outputFolder = newSettings.outputFolder;
+        }
+        if (newSettings.customTemplate) {
+            project.template = newSettings.customTemplate;
+        }
+        
+        await this.saveProjects();
+        console.log(`⚙️ Updated settings for project: ${projectId}`);
+    }
+
+    /**
+     * Archive a project
+     */
+    async archiveProject(projectId: string): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        project.status = 'archived';
+        await this.saveProjects();
+        console.log(`📦 Archived project: ${projectId}`);
+    }
+
+    /**
+     * Unarchive a project (move back to active)
+     */
+    async unarchiveProject(projectId: string): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        // Determine if it should be paused or processing based on completion
+        const hasUnfinishedItems = project.checklist.some(item => 
+            item.status === 'pending' || item.status === 'processing'
+        );
+        
+        project.status = hasUnfinishedItems ? 'paused' : 'completed';
+        await this.saveProjects();
+        console.log(`📤 Unarchived project: ${project.name} (ID: ${projectId}, status: ${project.status})`);
+        
+        // Debug: Check if project appears in active projects
+        const activeProjects = this.getActiveProjects();
+        const isInActive = activeProjects.find(p => p.id === projectId);
+        console.log(`🐛 UNARCHIVE DEBUG: Project in active list: ${!!isInActive}, Total active: ${activeProjects.length}`);
+    }
+
+    /**
+     * Remove a research topic (checklist item) from a project
+     */
+    async removeTopicFromProject(projectId: string, itemId: string, deleteFiles: boolean = false): Promise<void> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            throw new Error(`Project with ID ${projectId} not found`);
+        }
+
+        // Find the checklist item
+        const itemIndex = project.checklist.findIndex(item => item.id === itemId);
+        if (itemIndex === -1) {
+            throw new Error(`Topic with ID ${itemId} not found in project ${projectId}`);
+        }
+
+        const item = project.checklist[itemIndex];
+        
+        // Find associated generated notes
+        const associatedNotes = project.generatedNotes.filter(note => note.checklistItemId === itemId);
+        
+        if (deleteFiles) {
+            // Delete associated files
+            for (const noteInfo of associatedNotes) {
+                try {
+                    const file = this.app.vault.getAbstractFileByPath(noteInfo.filePath);
+                    if (file instanceof TFile) {
+                        await this.app.vault.delete(file);
+                        console.log(`🗑️ Deleted file: ${noteInfo.filePath}`);
+                    }
+                } catch (error) {
+                    console.warn(`Failed to delete file ${noteInfo.filePath}:`, error);
+                }
+            }
+        }
+
+        // Remove the checklist item
+        project.checklist.splice(itemIndex, 1);
+        
+        // Remove associated generated notes from tracking
+        project.generatedNotes = project.generatedNotes.filter(note => note.checklistItemId !== itemId);
+        
+        // Update progress counters
+        project.progress.total--;
+        if (item.status === 'completed') {
+            project.progress.completed--;
+        } else if (item.status === 'failed') {
+            project.progress.failed--;
+        }
+
+        await this.saveProjects();
+        
+        const action = deleteFiles ? 'removed topic and deleted associated files' : 'removed topic (files preserved)';
+        console.log(`🗑️ ${action}: ${item.name} from project ${project.name}`);
+        
+        new Notice(`${deleteFiles ? 'Removed topic and deleted files' : 'Removed topic (files preserved)'}: ${item.name}`);
+    }
+
+    /**
+     * Get all topics (checklist items) for a project with their associated files
+     */
+    getProjectTopics(projectId: string): Array<{
+        item: ChecklistItem;
+        associatedFiles: GeneratedNoteInfo[];
+        hasFiles: boolean;
+    }> {
+        const project = this.projects.get(projectId);
+        if (!project) {
+            return [];
+        }
+
+        return project.checklist.map(item => {
+            const associatedFiles = project.generatedNotes.filter(note => note.checklistItemId === item.id);
+            return {
+                item,
+                associatedFiles,
+                hasFiles: associatedFiles.length > 0
+            };
+        });
     }
 }

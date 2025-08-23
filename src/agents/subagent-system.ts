@@ -4,7 +4,7 @@
  */
 
 import { AIProvider } from '../types';
-import { RAGSystem, RAGContext } from '../rag/rag-architecture';
+import { RAGSystem, RAGContext } from '../features/knowledge-management/rag/rag-architecture';
 
 export interface SubagentConfig {
   name: string;
@@ -97,7 +97,7 @@ export class ContentParserAgent extends BaseSubagent {
 5. Maintain source attribution
 
 Focus on factual content that answers the research question. Remove promotional language, unnecessary formatting, and website-specific elements.`,
-      maxTokens: 2000,
+      maxTokens: plugin?.settings?.research?.defaults?.maxTokens || 0, // 0 = unlimited
       temperature: 0.1
     }, aiProvider, ragSystem, plugin);
   }
@@ -172,7 +172,7 @@ export class QualityGraderAgent extends BaseSubagent {
 5. Freshness - Recency and currency of information
 
 Provide scores from 0.0 to 1.0 for each dimension and overall quality.`,
-      maxTokens: 1000,
+      maxTokens: plugin?.settings?.research?.defaults?.maxTokens || 0, // 0 = unlimited
       temperature: 0.2
     }, aiProvider, ragSystem, plugin);
   }
@@ -267,7 +267,7 @@ export class FrontmatterExtractorAgent extends BaseSubagent {
 4. Domain-specific conventions (herbs, manga, academic, etc.)
 
 Generate accurate, contextual metadata that follows the template's expectations.`,
-      maxTokens: 800,
+      maxTokens: plugin?.settings?.research?.defaults?.maxTokens || 0, // 0 = unlimited
       temperature: 0.3
     }, aiProvider, ragSystem, plugin);
   }
@@ -351,7 +351,7 @@ Focus on:
 5. Appropriate depth for the section type
 
 Always use RAG context to support your responses with evidence.`,
-      maxTokens: 1500,
+      maxTokens: plugin?.settings?.research?.defaults?.maxTokens || 0, // 0 = unlimited
       temperature: 0.4
     }, aiProvider, ragSystem, plugin);
   }

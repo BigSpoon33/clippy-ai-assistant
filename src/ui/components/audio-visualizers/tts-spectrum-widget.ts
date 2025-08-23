@@ -3,8 +3,8 @@
  * Spectrum visualization widget for TTS audio playback
  */
 
-import { TTSSpectrumVisualizer, SpectrumVisualizerConfig } from '../../../voice-v2/components/voice-indicators/spectrum-visualizer';
-import { TTSVisualizerConfig } from '../../../voice-v2/types/voice-types';
+import { TTSSpectrumVisualizer, SpectrumVisualizerConfig } from '../../../voice/components/voice-indicators/spectrum-visualizer';
+import { TTSVisualizerConfig } from '../../../voice/types/voice-types';
 
 export interface TTSSpectrumWidgetConfig {
     enabled: boolean;

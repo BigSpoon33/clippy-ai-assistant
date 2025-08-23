@@ -1,5 +1,5 @@
 import { Component, WorkspaceLeaf, ItemView } from 'obsidian';
-import { KnowledgeGraphManager } from '../knowledge-graph/graph-manager';
+import { KnowledgeGraphManager } from '../../features/knowledge-management/knowledge-graph/graph-manager';
 
 interface GraphNode {
     id: string;

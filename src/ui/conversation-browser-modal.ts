@@ -3,7 +3,7 @@
  */
 
 import { Modal, App, Setting } from 'obsidian';
-import { ConversationManager, ConversationMetadata } from '../conversation/conversation-manager';
+import { ConversationManager, ConversationMetadata } from '../voice/conversation/conversation-manager';
 
 export class ConversationBrowserModal extends Modal {
   private conversationManager: ConversationManager;

@@ -3,6 +3,459 @@
  * Comprehensive styling for all UI components
  */
 
+/* ===== RESEARCH AGENT SIDEBAR STYLES ===== */
+.research-agent-sidebar {
+  padding: 0;
+  height: 100%;
+  overflow-y: auto;
+  font-family: var(--font-interface);
+}
+
+.research-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.research-title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.research-icon {
+  font-size: 16px;
+}
+
+.research-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-accent);
+  letter-spacing: 0.5px;
+}
+
+.research-settings-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.research-settings-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.research-section {
+  margin-bottom: 16px;
+}
+
+.research-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.research-section-header.collapsible-header {
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.research-section-header.collapsible-header:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.section-expand-arrow {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  margin-right: 4px;
+}
+
+/* Project Settings Modal */
+.project-settings-modal {
+  font-family: var(--font-interface);
+  line-height: 1.4;
+}
+
+.project-settings-modal h3 {
+  margin: 0 0 20px 0;
+  color: var(--text-accent);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 10px;
+}
+
+.project-settings-modal .settings-group {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+
+.project-settings-modal .settings-group h4 {
+  margin: 0 0 15px 0;
+  color: var(--text-normal);
+  font-size: 14px;
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+  padding-bottom: 8px;
+}
+
+.project-settings-modal .settings-group h5 {
+  margin: 15px 0 10px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.project-settings-modal label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
+.project-settings-modal input[type="text"],
+.project-settings-modal input[type="number"],
+.project-settings-modal select {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 8px;
+  color: var(--text-normal);
+}
+
+.project-settings-modal input[type="text"]:focus,
+.project-settings-modal input[type="number"]:focus,
+.project-settings-modal select:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.project-settings-modal input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.project-settings-modal .modal-buttons button {
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+  background: var(--background-primary);
+}
+
+.project-settings-modal .modal-buttons button:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Progress Indicators for Research Items */
+.item-icon {
+  font-size: 14px;
+  margin-right: 8px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.checklist-item.processing .item-icon {
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.checklist-item.completed .item-icon {
+  color: #4ade80; /* Green color for completed */
+}
+
+.checklist-item.failed .item-icon {
+  color: #f87171; /* Red color for failed */
+}
+
+.checklist-item.pending .item-icon {
+  color: #fbbf24; /* Amber color for pending */
+}
+
+.section-icon {
+  font-size: 12px;
+}
+
+.research-projects-container {
+  padding: 8px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+}
+
+.empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: var(--text-normal);
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.loading-message, .error-message {
+  text-align: center;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.error-message {
+  color: var(--text-error);
+}
+
+.research-project-item {
+  margin-bottom: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--background-primary);
+  transition: all 0.2s ease;
+}
+
+.research-project-item:hover {
+  border-color: var(--background-modifier-border-hover);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  gap: 8px;
+}
+
+.project-status-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.project-status-icon.green { color: var(--color-green); }
+.project-status-icon.yellow { color: var(--color-yellow); }
+.project-status-icon.red { color: var(--color-red); }
+.project-status-icon.blue { color: var(--color-blue); }
+
+.project-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.project-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.project-menu-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.progress-container {
+  padding: 0 12px 12px 12px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--background-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent) 0%, var(--color-accent-2) 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.checklist-container {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 8px 12px;
+  background: var(--background-secondary-alt);
+}
+
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.checklist-item.clickable {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.checklist-item.clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.item-icon {
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+}
+
+.item-name {
+  flex: 1;
+  color: var(--text-normal);
+}
+
+.checklist-item.completed .item-name {
+  color: var(--text-muted);
+}
+
+.checklist-item.failed .item-name {
+  color: var(--text-error);
+}
+
+.checklist-item.processing .item-name {
+  color: var(--color-accent);
+}
+
+.item-error {
+  font-size: 10px;
+  color: var(--text-error);
+  margin-top: 2px;
+  padding-left: 20px;
+}
+
+.quick-actions-container {
+  padding: 12px;
+}
+
+.quick-action-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.quick-action-btn.primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.quick-action-btn.primary:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.quick-action-btn.secondary {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.quick-action-btn.secondary:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover);
+}
+
+.secondary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.secondary-actions .quick-action-btn {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.insights-container {
+  padding: 12px;
+}
+
+.insight-item {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.insight-item:last-child {
+  border-bottom: none;
+}
+
+/* Animation for progress bars */
+@keyframes progressAnimation {
+  0% { width: 0%; }
+  100% { width: var(--progress-width); }
+}
+
+.progress-fill.animated {
+  animation: progressAnimation 0.6s ease-out;
+}
+
+/* Responsive adjustments */
+@media (max-width: 400px) {
+  .research-title {
+    font-size: 10px;
+  }
+  
+  .secondary-actions {
+    flex-direction: column;
+  }
+  
+  .secondary-actions .quick-action-btn {
+    flex: none;
+    margin-bottom: 6px;
+  }
+}
+
 /* ===== VAULT AGENT CHAT STYLES ===== */
 .vault-agent-chat-modal {
   width: 90vw;
@@ -1274,4 +1727,199 @@
 
 .theme-dark .vault-agent-message .message-content code {
   background: var(--background-modifier-border);
+}
+
+/* Enhanced Research Agent Sidebar Styles */
+
+/* Collapsible project headers */
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.project-header:hover {
+  background: var(--background-modifier-hover);
+}
+
+.expand-arrow {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  cursor: pointer;
+  width: 12px;
+  text-align: center;
+}
+
+.project-status-emoji {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.project-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.project-play-pause-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.project-play-pause-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.project-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.project-menu-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* Project details container */
+.project-details {
+  margin-top: 8px;
+  padding-left: 20px;
+  transition: all 0.3s ease;
+}
+
+/* Add topic button */
+.add-topic-btn {
+  background: var(--background-modifier-border);
+  border: 1px solid var(--background-modifier-border-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  margin-top: 8px;
+  transition: all 0.2s ease;
+}
+
+.add-topic-btn:hover {
+  background: var(--interactive-accent);
+  color: white;
+  border-color: var(--interactive-accent);
+}
+
+/* Make project items more interactive */
+.research-project-item {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  padding: 4px;
+  transition: all 0.2s ease;
+}
+
+.research-project-item:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+/* Modal styles */
+.add-topic-modal,
+.rename-project-modal {
+  font-family: var(--font-interface);
+}
+
+.add-topic-modal h3,
+.rename-project-modal h3 {
+  margin: 0 0 16px 0;
+  color: var(--text-normal);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.add-topic-modal textarea,
+.rename-project-modal input {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  font-family: var(--font-interface);
+  font-size: 14px;
+}
+
+.add-topic-modal textarea:focus,
+.rename-project-modal input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.add-topic-modal button,
+.rename-project-modal button {
+  cursor: pointer;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  font-family: var(--font-interface);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.add-topic-modal button:hover,
+.rename-project-modal button:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Enhanced checklist styling */
+.checklist-container {
+  margin: 8px 0;
+}
+
+.checklist-item {
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.checklist-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* Better progress bar styling */
+.progress-container {
+  margin: 8px 0;
+  padding: 0 8px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
 }

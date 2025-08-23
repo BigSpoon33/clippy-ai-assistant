@@ -6,7 +6,7 @@
 import { App, Modal, Setting, ButtonComponent, Notice, MarkdownRenderer } from 'obsidian';
 import { ClippySettings, EnhancementSuggestion } from '../types';
 import { ProviderFactory } from '../ai/provider-factory';
-import { ComprehensiveAnalysis } from '../processors/content-analyzer';
+import { ComprehensiveAnalysis } from '../features/content-processing/processors/content-analyzer';
 
 export class AIEnhancementModal extends Modal {
   private originalContent: string;

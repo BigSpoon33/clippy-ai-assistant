@@ -6,7 +6,7 @@
 import { App } from 'obsidian';
 import { ClippySettings } from '../types';
 import { VaultAgent, AgentContext } from './vault-agent';
-import { LocalVoiceIntegration } from '../voice-v2/local-voice-integration';
+import { LocalVoiceIntegration } from '../voice/local-voice-integration';
 
 export interface VoiceResponse {
   textResponse: string;

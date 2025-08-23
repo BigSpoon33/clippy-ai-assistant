@@ -8,10 +8,10 @@ import ClippyPlugin from '../main';
 import { ClippySettings } from '../types';
 import { VoiceVaultAgent } from '../agents/voice-vault-agent';
 import { AgentContext } from '../agents/vault-agent';
-import { LocalVoiceIntegration } from '../voice-v2/local-voice-integration';
+import { LocalVoiceIntegration } from '../voice/local-voice-integration';
 import { VADWidget, VADWidgetConfig } from './components/audio-visualizers/vad-widget';
 import { TTSSpectrumWidget, TTSSpectrumWidgetConfig } from './components/audio-visualizers/tts-spectrum-widget';
-import { ConversationManager, ConversationMessage } from '../conversation/conversation-manager';
+import { ConversationManager, ConversationMessage } from '../voice/conversation/conversation-manager';
 import { ConversationBrowserModal } from './conversation-browser-modal';
 
 export const VIEW_TYPE_VAULT_AGENT = 'clippy-vault-agent-view';

@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian';
+import { Notice, requestUrl } from 'obsidian';
 import { ResearchSource } from './automated-note-generator';
 
 interface WebSearchResult {
@@ -64,8 +64,15 @@ export class WebSearchEngine {
             let results: WebSearchResult[];
             
             if (this.preferredEngine === 'tavily' && this.tavilyConfig) {
-                results = await this.searchWithTavily(query, options);
+                try {
+                    console.log('🔍 Attempting Tavily search...');
+                    results = await this.searchWithTavily(query, options);
+                } catch (tavilyError) {
+                    console.warn('🔍 Tavily search failed, falling back to SearXNG:', tavilyError.message);
+                    results = await this.searchWithSearXNG(query, options);
+                }
             } else {
+                console.log('🔍 Using SearXNG search...');
                 results = await this.searchWithSearXNG(query, options);
             }
 
@@ -107,34 +114,44 @@ export class WebSearchEngine {
 
         const url = `${this.searxngConfig.baseUrl}/search?${params.toString()}`;
         
-        const response = await fetch(url, {
+        const response = await requestUrl({
+            url: url,
+            method: 'GET',
             headers: {
                 'Accept': 'application/json',
                 'User-Agent': 'CLIPPY-AI-Assistant/1.0'
             }
         });
 
-        if (!response.ok) {
-            throw new Error(`SearXNG search failed: ${response.status} ${response.statusText}`);
+        if (response.status !== 200) {
+            throw new Error(`SearXNG search failed: ${response.status}`);
         }
 
-        const data = await response.json();
+        const data = response.json;
+        
+        console.log('🔍 SearXNG Response:', { status: response.status, dataKeys: Object.keys(data), resultsCount: data.results?.length });
         
         if (!data.results || !Array.isArray(data.results)) {
+            console.warn('🔍 SearXNG invalid response:', data);
             throw new Error('Invalid SearXNG response format');
         }
 
-        return data.results
-            .slice(0, options.maxResults)
-            .map((result: any) => ({
-                title: result.title || 'No title',
-                url: result.url,
-                snippet: result.content || result.snippet || '',
-                domain: this.extractDomain(result.url),
-                publishedDate: result.publishedDate ? new Date(result.publishedDate) : undefined,
-                score: result.score || 0
-            }))
-            .filter((result: WebSearchResult) => this.isValidResult(result, options));
+        const rawResults = data.results.slice(0, options.maxResults);
+        console.log('🔍 SearXNG raw results count:', rawResults.length);
+        
+        const mappedResults = rawResults.map((result: any) => ({
+            title: result.title || 'No title',
+            url: result.url,
+            snippet: result.content || result.snippet || '',
+            domain: this.extractDomain(result.url),
+            publishedDate: result.publishedDate ? new Date(result.publishedDate) : undefined,
+            score: result.score || 0
+        }));
+        
+        const filteredResults = mappedResults.filter((result: WebSearchResult) => this.isValidResult(result, options));
+        console.log('🔍 SearXNG filtered results count:', filteredResults.length);
+        
+        return filteredResults;
     }
 
     /**
@@ -159,19 +176,18 @@ export class WebSearchEngine {
             include_domains: options.domains || undefined
         };
 
-        const response = await fetch('https://api.tavily.com/search', {
+        const response = await requestUrl({
+            url: 'https://api.tavily.com/search',
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            contentType: 'application/json',
             body: JSON.stringify(requestBody)
         });
 
-        if (!response.ok) {
-            throw new Error(`Tavily search failed: ${response.status} ${response.statusText}`);
+        if (response.status !== 200) {
+            throw new Error(`Tavily search failed: ${response.status}`);
         }
 
-        const data = await response.json();
+        const data = response.json;
         
         if (!data.results || !Array.isArray(data.results)) {
             throw new Error('Invalid Tavily response format');
@@ -229,20 +245,20 @@ export class WebSearchEngine {
      */
     private async fetchPageContent(url: string): Promise<string> {
         try {
-            const response = await fetch(url, {
+            const response = await requestUrl({
+                url: url,
+                method: 'GET',
                 headers: {
                     'User-Agent': 'CLIPPY-AI-Assistant/1.0',
                     'Accept': 'text/html,application/xhtml+xml'
-                },
-                // Add timeout
-                signal: AbortSignal.timeout(10000) // 10 second timeout
+                }
             });
 
-            if (!response.ok) {
+            if (response.status !== 200) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
-            const html = await response.text();
+            const html = response.text;
             return this.extractTextFromHTML(html);
 
         } catch (error) {
@@ -323,11 +339,15 @@ export class WebSearchEngine {
             const matchesDomain = options.domains.some(domain => 
                 result.domain.includes(domain)
             );
-            if (!matchesDomain) return false;
+            if (!matchesDomain) {
+                console.log('🔍 Filtered out - domain mismatch:', result.domain, 'required:', options.domains);
+                return false;
+            }
         }
 
         // Basic quality filters
         if (!result.title || !result.url || !result.snippet) {
+            console.log('🔍 Filtered out - missing data:', { title: !!result.title, url: !!result.url, snippet: !!result.snippet });
             return false;
         }
 
@@ -339,6 +359,7 @@ export class WebSearchEngine {
             ];
             
             if (lowQualityDomains.some(domain => result.domain.includes(domain))) {
+                console.log('🔍 Filtered out - low quality domain:', result.domain);
                 return false;
             }
         }
@@ -398,35 +419,18 @@ export class WebSearchEngine {
             let response;
             
             try {
-                response = await fetch(`${this.searxngConfig.baseUrl}/search?q=test&format=json&engines=duckduckgo`, {
+                response = await requestUrl({
+                    url: `${this.searxngConfig.baseUrl}/search?q=test&format=json&engines=duckduckgo`,
                     method: 'GET',
-                    headers: { 'Accept': 'application/json' },
-                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                    headers: { 'Accept': 'application/json' }
                 });
-                results.searxng = response.ok;
-                if (!response.ok) {
-                    results.errors.searxng = `HTTP ${response.status}: ${response.statusText}`;
+                results.searxng = response.status === 200;
+                if (response.status !== 200) {
+                    results.errors.searxng = `HTTP ${response.status}`;
                 }
-            } catch (corsError) {
-                // If CORS error, try no-cors mode to at least check if service is reachable
-                if (corsError.message.includes('CORS') || corsError.message.includes('Failed to fetch')) {
-                    try {
-                        await fetch(`${this.searxngConfig.baseUrl}/`, {
-                            method: 'GET',
-                            mode: 'no-cors', // This bypasses CORS but gives opaque response
-                            signal: AbortSignal.timeout(5000)
-                        });
-                        
-                        // If no-cors succeeds, service is running but CORS is blocking
-                        results.searxng = false; // Can't use for actual searches due to CORS
-                        results.errors.searxng = 'Service running but CORS blocked. See settings for CORS configuration.';
-                    } catch (noCorsError) {
-                        // Service not reachable at all
-                        results.errors.searxng = 'Cannot connect - check if SearXNG is running and URL is correct';
-                    }
-                } else {
-                    throw corsError; // Re-throw non-CORS errors
-                }
+            } catch (requestError) {
+                console.warn('SearXNG test request failed:', requestError);
+                results.errors.searxng = `Connection failed: ${requestError.message}`;
             }
         } catch (error) {
             console.warn('SearXNG connection test failed:', error);
@@ -444,24 +448,28 @@ export class WebSearchEngine {
         // Test Tavily
         if (this.tavilyConfig?.apiKey) {
             try {
-                const response = await fetch('https://api.tavily.com/search', {
+                const response = await requestUrl({
+                    url: 'https://api.tavily.com/search',
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: AbortSignal.timeout(10000), // 10 second timeout
+                    contentType: 'application/json',
                     body: JSON.stringify({
                         api_key: this.tavilyConfig.apiKey,
                         query: 'test',
                         max_results: 1
                     })
                 });
-                results.tavily = response.ok;
-                if (!response.ok) {
-                    results.errors!.tavily = `HTTP ${response.status}: ${response.statusText}`;
+                results.tavily = response.status === 200;
+                if (response.status !== 200) {
+                    results.errors!.tavily = `HTTP ${response.status}`;
                 }
             } catch (error) {
                 console.warn('Tavily connection test failed:', error);
                 if (error.name === 'AbortError') {
                     results.errors!.tavily = 'Connection timeout';
+                } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    results.errors!.tavily = 'Invalid API key (401 Unauthorized)';
+                } else if (error.message.includes('403')) {
+                    results.errors!.tavily = 'API key forbidden (403)';
                 } else {
                     results.errors!.tavily = error.message;
                 }

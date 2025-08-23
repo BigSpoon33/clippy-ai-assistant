@@ -48,13 +48,13 @@ export class AutomatedNoteGenerator {
     private templateEngine: TemplateEngine;
     private projectTracker: ProjectTracker;
 
-    constructor(app: App) {
+    constructor(app: App, projectTracker?: ProjectTracker) {
         this.app = app;
         this.webSearchEngine = new WebSearchEngine();
         this.documentParser = new DocumentParser(app);
         this.qualityRater = new QualityRater();
         this.templateEngine = new TemplateEngine(app);
-        this.projectTracker = new ProjectTracker(app);
+        this.projectTracker = projectTracker || new ProjectTracker(app);
     }
 
     /**

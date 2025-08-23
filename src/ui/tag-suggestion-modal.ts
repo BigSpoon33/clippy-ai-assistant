@@ -4,7 +4,7 @@
  */
 
 import { App, Modal, ButtonComponent, Notice } from 'obsidian';
-import { TagSuggestion } from '../processors/auto-tagger';
+import { TagSuggestion } from '../features/content-processing/processors/auto-tagger';
 
 export class TagSuggestionModal extends Modal {
   private suggestions: TagSuggestion[];

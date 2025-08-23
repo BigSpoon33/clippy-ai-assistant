@@ -5,12 +5,12 @@
 
 import { ItemView, WorkspaceLeaf, App } from 'obsidian';
 import { ClippySettings } from '../../types';
-import { LinkSuggestionEngine } from '../../link-suggestions/suggestion-engine';
-import { KnowledgeGraphManager } from '../../knowledge-graph/graph-manager';
-import { OrphanDetector } from '../../discovery/orphan-detector';
+import { LinkSuggestionEngine } from '../../features/knowledge-management/link-suggestions/suggestion-engine';
+import { KnowledgeGraphManager } from '../../features/knowledge-management/knowledge-graph/graph-manager';
+import { OrphanDetector } from '../../features/knowledge-management/discovery/orphan-detector';
 import { SuggestionPanel } from '../suggestion-panel';
-import { EmbeddingManager } from '../../semantic/embedding-manager';
-import { SimilarityEngine } from '../../semantic/similarity-engine';
+import { EmbeddingManager } from '../../features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from '../../features/knowledge-management/semantic/similarity-engine';
 
 export const VIEW_TYPE_CLIPPY_INSIGHTS = 'clippy-insights';
 
@@ -39,11 +39,13 @@ export class ClippyInsightsView extends ItemView {
     const container = this.containerEl.children[1];
     container.empty();
     
-    // Initialize Phase 2 components
-    const graphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache);
-    const orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache);
-    const embeddingManager = new EmbeddingManager(this.settings.providers.ollama.baseUrl);
-    const similarityEngine = new SimilarityEngine(embeddingManager);
+    // Initialize Phase 2 components using shared instances
+    const plugin = (this.app as any).plugins.plugins['clippy-ai-assistant'];
+    const embeddingManager = plugin?.embeddingManager || new EmbeddingManager(this.settings.providers.ollama.baseUrl);
+    const similarityEngine = plugin?.similarityEngine || new SimilarityEngine(embeddingManager);
+    
+    const graphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache, embeddingManager, similarityEngine);
+    const orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache, embeddingManager, similarityEngine);
     
     const suggestionSettings = {
       realTimeEnabled: true,

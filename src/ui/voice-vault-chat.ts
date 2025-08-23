@@ -7,7 +7,7 @@ import { App, MarkdownView, Notice } from 'obsidian';
 import { ClippySettings } from '../types';
 import { VaultAgentChatModal } from './vault-agent-chat';
 import { VoiceVaultAgent } from '../agents/voice-vault-agent';
-import { LocalVoiceIntegration } from '../voice-v2/local-voice-integration';
+import { LocalVoiceIntegration } from '../voice/local-voice-integration';
 import { AgentContext } from '../agents/vault-agent';
 
 /**

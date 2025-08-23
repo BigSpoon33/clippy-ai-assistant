@@ -1,7 +1,7 @@
 import { App, TFile, Notice } from 'obsidian';
-import { OrphanDetector } from '../discovery/orphan-detector';
-import { EmbeddingManager } from '../semantic/embedding-manager';
-import { SimilarityEngine } from '../semantic/similarity-engine';
+import { OrphanDetector } from '../features/knowledge-management/discovery/orphan-detector';
+import { EmbeddingManager } from '../features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from '../features/knowledge-management/semantic/similarity-engine';
 
 interface BridgeOpportunity {
     type: 'auto' | 'tag' | 'research' | 'index';

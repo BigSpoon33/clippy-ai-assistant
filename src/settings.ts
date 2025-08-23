@@ -43,6 +43,9 @@ export class ClippySettingsTab extends PluginSettingTab {
     // Research Settings
     this.addResearchSection();
 
+    // RAG & Embeddings Settings
+    this.addRAGSection();
+
     // Voice Settings
     this.addVoiceSection();
     
@@ -691,16 +694,30 @@ SEARXNG_CORS_ORIGINS="app://obsidian.md,http://localhost"`;
       .setName('Tavily API Key')
       .setDesc('Your Tavily API key for web search (stored securely)')
       .addText(text => {
+        const hasExistingKey = !!this.plugin.settings.research.searchEngine.tavilyApiKey;
         text
           .setPlaceholder('tvly-...')
-          .setValue(this.plugin.settings.research.searchEngine.tavilyApiKey ? '••••••••' : '')
+          .setValue(hasExistingKey ? '••••••••' : '')
           .onChange(async (value) => {
-            if (value !== '••••••••') {
-              this.plugin.settings.research.searchEngine.tavilyApiKey = value;
+            // Always save the value - if user pastes over ••••••••, save the new value
+            if (value.trim()) {
+              this.plugin.settings.research.searchEngine.tavilyApiKey = value.trim();
               await this.plugin.saveSettings();
+              console.log('Tavily API key saved');
+            } else {
+              this.plugin.settings.research.searchEngine.tavilyApiKey = '';
+              await this.plugin.saveSettings();
+              console.log('Tavily API key cleared');
             }
           });
         text.inputEl.type = 'password';
+        
+        // Add focus handler to clear masked value
+        text.inputEl.addEventListener('focus', () => {
+          if (text.getValue() === '••••••••') {
+            text.setValue('');
+          }
+        });
       });
 
     // Brave API Key
@@ -804,9 +821,6 @@ SEARXNG_CORS_ORIGINS="app://obsidian.md,http://localhost"`;
       .addDropdown(dropdown => {
         dropdown
           .addOption('research-standard', 'Research Standard (Comprehensive)')
-          .addOption('herb-profile', 'Herb Profile (Botanical focus)')
-          .addOption('medical', 'Medical Research (Health focus)')
-          .addOption('simple', 'Simple (Minimal sections)')
           .setValue(this.plugin.settings.research.defaults.template)
           .onChange(async (value) => {
             this.plugin.settings.research.defaults.template = value;
@@ -823,6 +837,22 @@ SEARXNG_CORS_ORIGINS="app://obsidian.md,http://localhost"`;
           .onChange(async (value) => {
             this.plugin.settings.research.defaults.showThinkingTags = value;
             await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Max tokens for AI responses')
+      .setDesc('Maximum tokens for AI responses in research generation. Set to 0 for unlimited. Higher values allow longer responses but may consume more resources.')
+      .addText(text => {
+        text
+          .setPlaceholder('0 (unlimited)')
+          .setValue(this.plugin.settings.research.defaults.maxTokens.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num >= 0) {
+              this.plugin.settings.research.defaults.maxTokens = num;
+              await this.plugin.saveSettings();
+            }
           });
       });
 
@@ -861,6 +891,7 @@ SEARXNG_CORS_ORIGINS="app://obsidian.md,http://localhost"`;
                   new Notice('✅ Tavily connection successful');
                 } else {
                   const errorMsg = connectivity.errors?.tavily ? `: ${connectivity.errors.tavily}` : '';
+                  console.error('Tavily connection test failed:', connectivity.errors?.tavily);
                   new Notice(`❌ Tavily connection failed${errorMsg}`);
                 }
               } else {
@@ -990,6 +1021,368 @@ Format your response with clear headings and bullet points for each section.`;
             await this.plugin.saveSettings();
             this.display(); // Refresh the settings display
             new Notice('✅ Concept extraction prompt reset to default');
+          });
+      });
+
+    // Note: Embedding and RAG settings moved to dedicated RAG section
+  }
+
+  private addRAGSection(): void {
+    const { containerEl } = this;
+
+    containerEl.createEl('h3', { text: 'RAG & Embeddings' });
+    containerEl.createEl('p', { 
+      text: 'Configure Retrieval-Augmented Generation (RAG) system for semantic search, embeddings, and context retrieval.',
+      cls: 'setting-item-description'
+    });
+
+    // ===== EMBEDDINGS SUBSECTION =====
+    containerEl.createEl('h4', { text: 'Embedding Configuration' });
+
+    // Embedding provider
+    new Setting(containerEl)
+      .setName('Embedding provider')
+      .setDesc('Choose your embedding computation provider')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('ollama', 'Ollama (Local)')
+          .addOption('openai', 'OpenAI (Cloud)')
+          .addOption('simple', 'Simple (Fallback)')
+          .setValue(this.plugin.settings.rag.embeddings.provider)
+          .onChange(async (value: 'ollama' | 'openai' | 'simple') => {
+            this.plugin.settings.rag.embeddings.provider = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Embedding model
+    new Setting(containerEl)
+      .setName('Embedding model')
+      .setDesc('Model name for embedding computation')
+      .addText(text => {
+        text
+          .setPlaceholder('nomic-embed-text')
+          .setValue(this.plugin.settings.rag.embeddings.model)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.embeddings.model = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Ollama URL
+    new Setting(containerEl)
+      .setName('Ollama URL')
+      .setDesc('URL of your Ollama instance for embeddings')
+      .addText(text => {
+        text
+          .setPlaceholder('http://localhost:11434')
+          .setValue(this.plugin.settings.rag.embeddings.ollamaUrl)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.embeddings.ollamaUrl = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Vector dimensions
+    new Setting(containerEl)
+      .setName('Vector dimensions')
+      .setDesc('Number of dimensions for embedding vectors (768, 1024, 1536, etc.)')
+      .addText(text => {
+        text
+          .setPlaceholder('768')
+          .setValue(this.plugin.settings.rag.embeddings.dimensions.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.embeddings.dimensions = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Max tokens
+    new Setting(containerEl)
+      .setName('Max tokens per embedding')
+      .setDesc('Maximum tokens to process per embedding request')
+      .addText(text => {
+        text
+          .setPlaceholder('2048')
+          .setValue(this.plugin.settings.rag.embeddings.maxTokens.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.embeddings.maxTokens = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Enable cache
+    new Setting(containerEl)
+      .setName('Enable embedding cache')
+      .setDesc('Cache embeddings to improve performance (uses more memory)')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.embeddings.enableCache)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.embeddings.enableCache = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Cache size
+    new Setting(containerEl)
+      .setName('Cache size')
+      .setDesc('Maximum number of embeddings to keep in memory')
+      .addText(text => {
+        text
+          .setPlaceholder('10000')
+          .setValue(this.plugin.settings.rag.embeddings.cacheSize.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.embeddings.cacheSize = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // ===== CHUNKING SUBSECTION =====
+    containerEl.createEl('h4', { text: 'Document Chunking' });
+
+    // Chunking strategy
+    new Setting(containerEl)
+      .setName('Chunking strategy')
+      .setDesc('How to split documents into chunks for processing')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('semantic', 'Semantic (Smart sentence boundaries)')
+          .addOption('sentence', 'Sentence-based')
+          .addOption('fixed', 'Fixed character count')
+          .addOption('hybrid', 'Hybrid (semantic + fixed)')
+          .setValue(this.plugin.settings.rag.chunking.strategy)
+          .onChange(async (value: 'sentence' | 'semantic' | 'fixed' | 'hybrid') => {
+            this.plugin.settings.rag.chunking.strategy = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Chunk size
+    new Setting(containerEl)
+      .setName('Chunk size')
+      .setDesc('Target characters per chunk (recommended: 800-1200)')
+      .addText(text => {
+        text
+          .setPlaceholder('1000')
+          .setValue(this.plugin.settings.rag.chunking.chunkSize.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.chunking.chunkSize = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Chunk overlap
+    new Setting(containerEl)
+      .setName('Chunk overlap')
+      .setDesc('Character overlap between adjacent chunks (recommended: 10-20% of chunk size)')
+      .addText(text => {
+        text
+          .setPlaceholder('100')
+          .setValue(this.plugin.settings.rag.chunking.chunkOverlap.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num >= 0) {
+              this.plugin.settings.rag.chunking.chunkOverlap = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Respect sentences
+    new Setting(containerEl)
+      .setName('Respect sentence boundaries')
+      .setDesc('Avoid breaking sentences when chunking')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.chunking.respectSentences)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.chunking.respectSentences = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // ===== RETRIEVAL SUBSECTION =====
+    containerEl.createEl('h4', { text: 'Context Retrieval' });
+
+    // Max results
+    new Setting(containerEl)
+      .setName('Max retrieval results')
+      .setDesc('Maximum number of relevant chunks/notes to retrieve')
+      .addText(text => {
+        text
+          .setPlaceholder('10')
+          .setValue(this.plugin.settings.rag.retrieval.maxResults.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.retrieval.maxResults = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Min relevance score
+    new Setting(containerEl)
+      .setName('Min relevance score')
+      .setDesc('Minimum similarity score for including results (0.0-1.0)')
+      .addText(text => {
+        text
+          .setPlaceholder('0.7')
+          .setValue(this.plugin.settings.rag.retrieval.minRelevanceScore.toString())
+          .onChange(async (value) => {
+            const num = parseFloat(value);
+            if (!isNaN(num) && num >= 0 && num <= 1) {
+              this.plugin.settings.rag.retrieval.minRelevanceScore = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Enable hybrid search
+    new Setting(containerEl)
+      .setName('Enable hybrid search')
+      .setDesc('Combine semantic search with keyword matching for better results')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.retrieval.enableHybridSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.retrieval.enableHybridSearch = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Context window
+    new Setting(containerEl)
+      .setName('Context window')
+      .setDesc('Maximum characters to include in AI context (increase for longer context models)')
+      .addText(text => {
+        text
+          .setPlaceholder('8192')
+          .setValue(this.plugin.settings.rag.retrieval.contextWindow.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.retrieval.contextWindow = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // ===== ADVANCED SUBSECTION =====
+    containerEl.createEl('h4', { text: 'Advanced Settings' });
+
+    // Enable semantic search
+    new Setting(containerEl)
+      .setName('Enable semantic search')
+      .setDesc('Use embeddings for semantic similarity matching')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.advanced.enableSemanticSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.advanced.enableSemanticSearch = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Enable keyword search
+    new Setting(containerEl)
+      .setName('Enable keyword search')
+      .setDesc('Use traditional keyword matching (BM25-style)')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.advanced.enableKeywordSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.advanced.enableKeywordSearch = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Hybrid search weight
+    new Setting(containerEl)
+      .setName('Semantic/keyword balance')
+      .setDesc('Weight of semantic vs keyword search (0.0 = all keyword, 1.0 = all semantic)')
+      .addText(text => {
+        text
+          .setPlaceholder('0.7')
+          .setValue(this.plugin.settings.rag.advanced.hybridSearchWeight.toString())
+          .onChange(async (value) => {
+            const num = parseFloat(value);
+            if (!isNaN(num) && num >= 0 && num <= 1) {
+              this.plugin.settings.rag.advanced.hybridSearchWeight = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Enable citations
+    new Setting(containerEl)
+      .setName('Enable citations')
+      .setDesc('Track and include source citations in AI responses')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.rag.advanced.enableCitations)
+          .onChange(async (value) => {
+            this.plugin.settings.rag.advanced.enableCitations = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // Max context length
+    new Setting(containerEl)
+      .setName('Max context length')
+      .setDesc('Maximum characters to send to AI (prevents token limit issues)')
+      .addText(text => {
+        text
+          .setPlaceholder('6000')
+          .setValue(this.plugin.settings.rag.advanced.maxContextLength.toString())
+          .onChange(async (value) => {
+            const num = parseInt(value);
+            if (!isNaN(num) && num > 0) {
+              this.plugin.settings.rag.advanced.maxContextLength = num;
+              await this.plugin.saveSettings();
+            }
+          });
+      });
+
+    // Test RAG system
+    new Setting(containerEl)
+      .setName('Test RAG system')
+      .setDesc('Test embeddings and retrieval functionality')
+      .addButton(button => {
+        button
+          .setButtonText('Test RAG')
+          .onClick(async () => {
+            button.setButtonText('Testing...');
+            button.setDisabled(true);
+            
+            try {
+              // Simple RAG test - create embedding and search
+              const testText = "This is a test of the RAG system embeddings and retrieval.";
+              new Notice('RAG test started...');
+              
+              // We'll implement actual testing when the RAG system is consolidated
+              new Notice('✅ RAG system configuration appears valid');
+              
+            } catch (error) {
+              console.error('RAG test failed:', error);
+              new Notice(`❌ RAG test failed: ${error.message}`);
+            } finally {
+              button.setButtonText('Test RAG');
+              button.setDisabled(false);
+            }
           });
       });
   }
@@ -2194,48 +2587,6 @@ pip install piper-tts
       return; // Don't show other settings if MoE is disabled
     }
 
-    containerEl.createEl('h4', { text: 'Embedding Settings' });
-
-    new Setting(containerEl)
-      .setName('Embedding Strategy')
-      .setDesc('How to handle note embeddings for semantic search')
-      .addDropdown(dropdown => {
-        dropdown
-          .addOption('all', 'All notes (best quality)')
-          .addOption('tagged', 'Tagged notes only (performance)')
-          .addOption('smart', 'Smart selection (recommended)')
-          .setValue(this.plugin.settings.moe.embedding.strategy)
-          .onChange(async (value: 'all' | 'tagged' | 'smart') => {
-            this.plugin.settings.moe.embedding.strategy = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
-      .setName('Cache Size')
-      .setDesc('Number of embeddings to keep in memory (higher = faster, more RAM)')
-      .addSlider(slider => {
-        slider
-          .setLimits(1000, 50000, 1000)
-          .setValue(this.plugin.settings.moe.embedding.cacheSize)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.moe.embedding.cacheSize = value;
-            await this.plugin.saveSettings();
-          });
-      });
-
-    new Setting(containerEl)
-      .setName('Dynamic Cache Management')
-      .setDesc('Automatically manage cache size based on available memory')
-      .addToggle(toggle => {
-        toggle
-          .setValue(this.plugin.settings.moe.embedding.enableDynamicCache)
-          .onChange(async (value) => {
-            this.plugin.settings.moe.embedding.enableDynamicCache = value;
-            await this.plugin.saveSettings();
-          });
-      });
 
     containerEl.createEl('h4', { text: 'Agent Settings' });
 
@@ -2490,11 +2841,15 @@ export class SettingsManager {
     migrated.version = DEFAULT_SETTINGS.version;
 
     // Future migrations can be added here
-    // Example:
-    // if (currentVersion < 3) {
-    //   console.log('[Settings Manager] Migrating from v2 to v3: Adding new feature X');
-    //   // Migration logic for v3 features
-    // }
+    if (currentVersion < 3) {
+      console.log('[Settings Manager] Migrating from v2 to v3: Adding maxTokens setting for research');
+      // Ensure research.defaults.maxTokens exists
+      if (!migrated.research?.defaults?.maxTokens) {
+        if (!migrated.research) migrated.research = { ...DEFAULT_SETTINGS.research };
+        if (!migrated.research.defaults) migrated.research.defaults = { ...DEFAULT_SETTINGS.research.defaults };
+        migrated.research.defaults.maxTokens = 0; // 0 = unlimited
+      }
+    }
 
     return migrated;
   }

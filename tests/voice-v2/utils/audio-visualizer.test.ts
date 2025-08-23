@@ -3,7 +3,7 @@
  * Tests for Canvas rendering performance and optimization
  */
 
-import { AudioVisualizer, VisualizerType, VisualizerConfig } from '../../../src/voice-v2/utils/audio-visualizer';
+import { AudioVisualizer, VisualizerType, VisualizerConfig } from '../../../src/voice/utils/audio-visualizer';
 
 describe('AudioVisualizer Performance', () => {
   let container: HTMLElement;

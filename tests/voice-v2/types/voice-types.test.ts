@@ -3,7 +3,7 @@
  * Basic tests to verify type definitions and test setup
  */
 
-import { VADVisualizerConfig, TTSVisualizerConfig, VoiceVisualizersConfig } from '../../../src/voice-v2/types/voice-types';
+import { VADVisualizerConfig, TTSVisualizerConfig, VoiceVisualizersConfig } from '../../../src/voice/types/voice-types';
 
 describe('Voice Types', () => {
   describe('VADVisualizerConfig', () => {

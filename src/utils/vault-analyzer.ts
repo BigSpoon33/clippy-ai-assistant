@@ -394,4 +394,21 @@ export class VaultAnalyzer {
     this.cache = null;
     this.lastAnalysis = 0;
   }
+
+  /**
+   * Get cached vault patterns without triggering new analysis
+   */
+  getPatterns(): VaultPatterns | null {
+    return this.cache;
+  }
+
+  /**
+   * Get vault patterns, analyzing if cache is empty or stale
+   */
+  async getOrAnalyzePatterns(): Promise<VaultPatterns> {
+    if (!this.cache || (Date.now() - this.lastAnalysis) > this.CACHE_DURATION) {
+      return await this.analyzeVaultPatterns();
+    }
+    return this.cache;
+  }
 }

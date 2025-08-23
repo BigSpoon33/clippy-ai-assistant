@@ -3,7 +3,7 @@
  * Tests for Voice Activity Detection accuracy and performance
  */
 
-import { VADEngine, VADResult, VADAlgorithm, VADConfig } from '../../../src/voice-v2/utils/vad-engine';
+import { VADEngine, VADResult, VADAlgorithm, VADConfig } from '../../../src/voice/utils/vad-engine';
 
 describe('VADEngine', () => {
   let vadEngine: VADEngine;

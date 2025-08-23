@@ -4,7 +4,7 @@
 //  */
 
 import { Plugin, Notice, MarkdownView, Editor, WorkspaceLeaf } from 'obsidian';
-import { ClippySettings, DEFAULT_SETTINGS } from './types';
+import { ClippySettings, DEFAULT_SETTINGS, VaultPatterns } from './types';
 import { ClippySettingsTab, SettingsManager } from './settings';
 import { CommandHandlers } from './ui/command-handlers';
 import { VaultAnalyzer } from './utils/vault-analyzer';
@@ -15,29 +15,49 @@ import { ClippyErrorBoundaries } from './utils/error-boundaries';
 import { EnhancementModal, TaggingModal } from './ui/modals';
 import { ClippyInsightsView, VIEW_TYPE_CLIPPY_INSIGHTS } from './ui/views';
 import { VaultAgentSidebarView, VIEW_TYPE_VAULT_AGENT } from './ui/vault-agent-sidebar-view';
-import { ContentEnhancer, TagGenerator, TagEditor } from './services';
+import { ResearchAgentSidebarView, VIEW_TYPE_RESEARCH_AGENT } from './ui/research-agent-sidebar-view';
+import { ContentEnhancer } from './features/content-processing/services/content-enhancer';
+import { TagGenerator } from './features/content-processing/services/tag-generator';
+import { TagEditor } from './features/content-processing/services/tag-editor';
 
 // Phase 2 imports
-import { LinkSuggestionEngine } from './link-suggestions/suggestion-engine';
-import { KnowledgeGraphManager } from './knowledge-graph/graph-manager';
-import { OrphanDetector } from './discovery/orphan-detector';
+import { LinkSuggestionEngine } from './features/knowledge-management/link-suggestions/suggestion-engine';
+import { KnowledgeGraphManager } from './features/knowledge-management/knowledge-graph/graph-manager';
+import { OrphanDetector } from './features/knowledge-management/discovery/orphan-detector';
 import { SuggestionPanel } from './ui/suggestion-panel';
 import { OrphanManagementModal } from './ui/orphan-management-modal';
-import { EmbeddingManager } from './semantic/embedding-manager';
-import { SimilarityEngine } from './semantic/similarity-engine';
+import { EmbeddingManager } from './features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from './features/knowledge-management/semantic/similarity-engine';
 
 
 // Voice Assistant System imports
-import { LocalVoiceIntegration } from './voice-v2/local-voice-integration';
+import { LocalVoiceIntegration } from './voice/local-voice-integration';
 
 // MoE System imports  
-import { SimpleMoEOrchestrator } from './simple-moe';
+import { SimpleMoEOrchestrator } from './agents/simple-moe';
+
+// Research System imports
+import { ProjectTracker } from './research/project-tracker';
+import { RAGSystem } from './features/knowledge-management/rag/rag-architecture';
+import { QualityRater } from './research/quality-rater';
 
 export default class ClippyPlugin extends Plugin {
   settings: ClippySettings;
   settingsManager: SettingsManager;
   commandHandlers: CommandHandlers;
   vaultAnalyzer: VaultAnalyzer;
+
+  // Shared research system components
+  projectTracker: ProjectTracker;
+
+  // Shared knowledge management components
+  embeddingManager: EmbeddingManager;
+  similarityEngine: SimilarityEngine;
+  ragSystem: RAGSystem;
+  semanticSearchService: any;
+
+  // Shared vault analysis patterns
+  vaultPatterns: VaultPatterns | null = null;
 
   // Service instances
   private contentEnhancer: ContentEnhancer;
@@ -48,8 +68,7 @@ export default class ClippyPlugin extends Plugin {
   private linkSuggestionEngine: LinkSuggestionEngine;
   private knowledgeGraphManager: KnowledgeGraphManager;
   private orphanDetector: OrphanDetector;
-  private embeddingManager: EmbeddingManager;
-  private similarityEngine: SimilarityEngine;
+  // embeddingManager and similarityEngine are now public shared instances above
   
   
   // Voice Assistant System (Local Whisper + Piper)
@@ -140,8 +159,31 @@ export default class ClippyPlugin extends Plugin {
         // Initialize services
         this.initializeServices();
 
+        // Initialize shared research system components
+        this.projectTracker = new ProjectTracker(this.app);
+
+        // Initialize shared knowledge management components using centralized RAG settings
+        this.embeddingManager = new EmbeddingManager(this.settings.rag.embeddings.ollamaUrl, this.settings);
+        this.similarityEngine = new SimilarityEngine(this.embeddingManager);
+        
+        // Initialize shared RAG system
+        const qualityRater = new QualityRater();
+        this.ragSystem = new RAGSystem(this.embeddingManager, this.similarityEngine, qualityRater, this.settings);
+
+        // Initialize semantic search service
+        const { SemanticSearchService } = await import('./features/search/semantic-search-integration');
+        this.semanticSearchService = new SemanticSearchService(
+            this.app,
+            this.embeddingManager,
+            this.similarityEngine,
+            this.settings
+        );
+
         // Initialize vault analyzer
         this.vaultAnalyzer = new VaultAnalyzer(this.app);
+
+        // Initialize shared vault patterns (analyze vault once at startup)
+        await this.initializeVaultPatterns();
 
         // Initialize Phase 2 components
         await this.initializePhase2Components();
@@ -182,6 +224,11 @@ export default class ClippyPlugin extends Plugin {
           VIEW_TYPE_VAULT_AGENT,
           (leaf) => new VaultAgentSidebarView(leaf, this)
         );
+        
+        this.registerView(
+          VIEW_TYPE_RESEARCH_AGENT,
+          (leaf) => new ResearchAgentSidebarView(leaf, this)
+        );
 
         // Schedule vault analysis in background
         this.scheduleVaultAnalysis();
@@ -212,10 +259,9 @@ export default class ClippyPlugin extends Plugin {
   private async initializePhase2Components(): Promise<void> {
     await ClippyErrorBoundaries.aiProviderOperation(
       async () => {
-        this.knowledgeGraphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache);
-        this.orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache);
-        this.embeddingManager = new EmbeddingManager(this.settings.providers.ollama.baseUrl);
-        this.similarityEngine = new SimilarityEngine(this.embeddingManager);
+        this.knowledgeGraphManager = new KnowledgeGraphManager(this.app.vault, this.app.metadataCache, this.embeddingManager, this.similarityEngine);
+        this.orphanDetector = new OrphanDetector(this.app.vault, this.app.metadataCache, this.embeddingManager, this.similarityEngine);
+        // Use shared embedding and similarity systems (already initialized)
         
         const suggestionSettings = {
           realTimeEnabled: this.settings.features.intelligentLinksEnabled,
@@ -484,11 +530,36 @@ export default class ClippyPlugin extends Plugin {
     }
   }
 
-//   /**
-//    * Force refresh of vault patterns
-//    */
+  /**
+   * Initialize shared vault patterns at plugin startup
+   */
+  private async initializeVaultPatterns(): Promise<void> {
+    this.vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
+      () => this.vaultAnalyzer.analyzeVaultPatterns(),
+      'initialize vault patterns',
+      {
+        fallback: async () => {
+          console.warn('CLIPPY: Failed to initialize vault patterns, using empty patterns');
+          return {
+            tagPatterns: [],
+            dateFormats: [],
+            cssClasses: [],
+            frontmatterSchemas: [],
+            wikilinkPatterns: []
+          };
+        },
+        showUserNotice: false
+      }
+    );
+    
+    console.log(`CLIPPY: Initialized vault patterns - ${this.vaultPatterns.tagPatterns.length} tag patterns, ${this.vaultPatterns.frontmatterSchemas.length} frontmatter schemas`);
+  }
+
+  /**
+   * Force refresh of vault patterns
+   */
   async refreshVaultPatterns(): Promise<void> {
-    await ClippyErrorBoundaries.aiProviderOperation(
+    this.vaultPatterns = await ClippyErrorBoundaries.aiProviderOperation(
       () => this.vaultAnalyzer.analyzeVaultPatterns(true),
       'refresh vault patterns',
       {
@@ -506,6 +577,7 @@ export default class ClippyPlugin extends Plugin {
       }
     );
     
+    console.log(`CLIPPY: Refreshed vault patterns - ${this.vaultPatterns.tagPatterns.length} tag patterns, ${this.vaultPatterns.frontmatterSchemas.length} frontmatter schemas`);
     new Notice('CLIPPY: Vault patterns refreshed');
   }
 

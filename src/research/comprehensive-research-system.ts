@@ -3,12 +3,12 @@ import { WebSearchEngine } from './web-search-engine';
 import { DocumentParser } from './document-parser';
 import { QualityRater } from './quality-rater';
 import { ProjectTracker } from './project-tracker';
-import { RAGSystem } from '../rag/rag-architecture';
+import { RAGSystem } from '../features/knowledge-management/rag/rag-architecture';
 import { SubagentCoordinator } from '../agents/subagent-system';
-import { EmbeddingManager } from '../semantic/embedding-manager';
-import { SimilarityEngine } from '../semantic/similarity-engine';
+import { EmbeddingManager } from '../features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from '../features/knowledge-management/semantic/similarity-engine';
 import { ValidationHelper, ChecklistItemSchema, ExtractedWisdomSchema } from '../schemas/research-schemas';
-import { AutoTagger, TagSuggestion } from '../processors/auto-tagger';
+import { AutoTagger, TagSuggestion } from '../features/content-processing/processors/auto-tagger';
 import { 
     processThinkingTags, 
     sanitizeFileName, 
@@ -20,6 +20,9 @@ import {
     ProgressTracker 
 } from '../utils/shared-utilities';
 import { ClippyErrorBoundaries } from '../utils/error-boundaries';
+
+// Import types
+import { VaultPatterns } from '../types';
 
 interface ChecklistItem {
     name: string;
@@ -71,18 +74,23 @@ export class ComprehensiveResearchSystem {
         this.webSearchEngine = new WebSearchEngine(); // Will be reconfigured in processResearchChecklist
         this.documentParser = new DocumentParser(app);
         this.qualityRater = new QualityRater();
-        this.projectTracker = new ProjectTracker(app);
         
-        // Initialize new RAG and agent systems
-        this.embeddingManager = new EmbeddingManager();
-        this.similarityEngine = new SimilarityEngine(this.embeddingManager);
-        this.ragSystem = new RAGSystem(this.embeddingManager, this.similarityEngine, this.qualityRater);
+        // Use shared project tracker from plugin if available, otherwise create new one
+        this.projectTracker = plugin?.projectTracker || new ProjectTracker(app);
+        
+        // Use shared embedding/similarity/RAG systems if available, otherwise create new ones
+        this.embeddingManager = plugin?.embeddingManager || new EmbeddingManager(
+            plugin?.settings?.rag?.embeddings?.ollamaUrl, 
+            plugin?.settings
+        );
+        this.similarityEngine = plugin?.similarityEngine || new SimilarityEngine(this.embeddingManager);
+        this.ragSystem = plugin?.ragSystem || new RAGSystem(this.embeddingManager, this.similarityEngine, this.qualityRater);
         
         if (plugin && plugin.aiProvider) {
             this.subagentCoordinator = new SubagentCoordinator(plugin.aiProvider, this.ragSystem, plugin);
             
-            // Initialize AutoTagger for research note tagging
-            const vaultPatterns = plugin.vaultAnalyzer ? plugin.vaultAnalyzer.getPatterns() : {
+            // Initialize AutoTagger for research note tagging using shared vault patterns
+            const vaultPatterns = plugin.vaultPatterns || {
                 tagPatterns: [],
                 dateFormats: [],
                 cssClasses: [],
@@ -91,6 +99,129 @@ export class ComprehensiveResearchSystem {
             };
             this.autoTagger = new AutoTagger(plugin.aiProvider, vaultPatterns);
         }
+    }
+
+    /**
+     * Continue research for unfinished items in an existing project
+     */
+    async continueProjectResearch(
+        projectId: string,
+        options: any = {},
+        onProgress?: (progress: { current: number; total: number; percentage: number; message: string }) => void
+    ): Promise<void> {
+        const project = this.projectTracker.getProject(projectId);
+        if (!project) {
+            throw new Error(`Project not found: ${projectId}`);
+        }
+
+        // Find unfinished items
+        const unfinishedItems = project.checklist.filter(item => 
+            item.status === 'pending' || item.status === 'failed'
+        );
+
+        if (unfinishedItems.length === 0) {
+            console.log('✅ No unfinished items in project');
+            return;
+        }
+
+        console.log(`🔄 Continuing research for ${unfinishedItems.length} unfinished items`);
+
+        // Configure WebSearchEngine with plugin settings (API configuration is global)
+        const pluginSettings = this.plugin.settings;
+        const searxngConfig = {
+            baseUrl: pluginSettings.research?.searchEngine?.searxngUrl || 'http://localhost:8081'
+        };
+        const tavilyConfig = pluginSettings.research?.searchEngine?.tavilyApiKey ? {
+            apiKey: pluginSettings.research?.searchEngine?.tavilyApiKey
+        } : undefined;
+
+        this.webSearchEngine = new WebSearchEngine(searxngConfig, tavilyConfig);
+
+        // Research each unfinished item - continue until ALL are complete or manually paused
+        for (let i = 0; i < unfinishedItems.length; i++) {
+            const item = unfinishedItems[i];
+            
+            // Check for pause before processing each item (including the first)
+            const currentProject = this.projectTracker.getProject(projectId);
+            if (currentProject?.status === 'paused') {
+                console.log(`⏸️ Project manually paused, stopping research after completing ${i} items: ${project.name}`);
+                break;
+            }
+            
+            // For first item, ensure project status is 'processing' if it's not paused
+            if (i === 0 && currentProject && currentProject.status !== 'processing') {
+                console.log(`🔄 Setting project status to processing: ${project.name}`);
+                currentProject.status = 'processing';
+                await this.projectTracker.saveProjects();
+            }
+            
+            try {
+                // Mark item as processing
+                await this.projectTracker.markItemProcessing(projectId, item.id);
+                
+                // Check if note already exists, create if not
+                let noteFile: TFile;
+                const notePath = `${project.outputFolder}/${this.sanitizeFileName(item.name)}.md`;
+                
+                const existingFile = this.app.vault.getAbstractFileByPath(notePath);
+                if (existingFile instanceof TFile) {
+                    noteFile = existingFile;
+                } else {
+                    // Create new note using the project's template settings
+                    const templateOptions = {
+                        customTemplate: project.settings.customTemplate !== 'research-standard' ? project.settings.customTemplate : undefined,
+                        projectName: project.name
+                    };
+                    const content = this.generateBlankResearchTemplate(item, templateOptions);
+                    noteFile = await this.app.vault.create(notePath, content);
+                    console.log(`📄 Created new research note: ${notePath}`);
+                }
+                
+                // Perform comprehensive research using project settings
+                const researchOptions = {
+                    ...options,
+                    outputFolder: project.settings.outputFolder,
+                    enableWebSearch: project.settings.enableWebSearch,
+                    saveIndividualPages: project.settings.saveIndividualPages,
+                    searchVaultExactWords: project.settings.searchVaultExactWords,
+                    enableSemanticSearch: project.settings.enableSemanticSearch,
+                    aiEnhanceFinalNote: project.settings.aiEnhanceFinalNote,
+                    maxWebSearchResults: project.settings.maxWebSearchResults,
+                    customTemplate: project.settings.customTemplate,
+                    searxngUrl: project.settings.searxngUrl,
+                    tavilyApiKey: project.settings.tavilyApiKey
+                };
+                
+                await this.comprehensiveResearch(
+                    item,
+                    noteFile,
+                    researchOptions,
+                    undefined,
+                    onProgress,
+                    i
+                );
+                
+                // Mark item as completed
+                await this.projectTracker.markItemCompleted(projectId, item.id, notePath);
+                console.log(`✅ Completed research for: ${item.name} (${i + 1}/${unfinishedItems.length})`);
+                
+                // Report progress
+                if (onProgress) {
+                    onProgress({
+                        current: i + 1,
+                        total: unfinishedItems.length,
+                        percentage: Math.round(((i + 1) / unfinishedItems.length) * 100),
+                        message: `Completed: ${item.name}`
+                    });
+                }
+                
+            } catch (error) {
+                console.error(`❌ Failed research for ${item.name}:`, error);
+                await this.projectTracker.markItemFailed(projectId, item.id, error.message);
+            }
+        }
+
+        console.log(`🎉 Continued research completed for project: ${project.name}`);
     }
 
     /**
@@ -113,8 +244,11 @@ export class ComprehensiveResearchSystem {
         
         console.log(`🔧 Configured web search engine: ${options.searchEngine || 'searxng'} (${tavilyConfig ? 'Tavily will be used' : 'SearXNG will be used'})`);
 
+        // Generate meaningful project name from checklist items
+        const projectName = this.generateProjectName(checklist);
+        
         const projectId = await this.projectTracker.createProject(
-            `Comprehensive Research: ${new Date().toLocaleDateString()}`,
+            projectName,
             'Systematic research with vault analysis and web search',
             checklist,
             options
@@ -277,7 +411,7 @@ export class ComprehensiveResearchSystem {
             percentage: ((baseProgress + 1) / (progressTracker?.getProgress().total || 100)) * 100,
             message: `Searching vault for: ${item.name}`
         });
-        const vaultNotes = await this.findVaultNotesWithExactWords(item.name);
+        const vaultNotes = await this.findVaultNotesWithExactWords(item.name, options);
         console.log(`📚 Found ${vaultNotes.length} vault notes with exact words`);
         progressTracker?.increment();
 
@@ -288,8 +422,15 @@ export class ComprehensiveResearchSystem {
             percentage: ((baseProgress + 2) / (progressTracker?.getProgress().total || 100)) * 100,
             message: `Performing web search for: ${item.name}`
         });
-        const webSearchNotes = await this.performWebSearchAndSavePages(item.name, options, onProgress);
-        console.log(`🌐 Created ${webSearchNotes.length} web search notes`);
+        let webSearchNotes: WebSearchNote[] = [];
+        try {
+            webSearchNotes = await this.performWebSearchAndSavePages(item.name, options, onProgress);
+            console.log(`🌐 Created ${webSearchNotes.length} web search notes`);
+        } catch (error) {
+            console.warn(`⚠️ Web search failed for "${item.name}": ${error.message}`);
+            console.log(`📚 Continuing research with vault notes only (${vaultNotes.length} found)`);
+            // Continue without web search - vault research can still be valuable
+        }
         progressTracker?.increment();
 
         // Step 2c: Parse and extract wisdom from all sources
@@ -342,15 +483,14 @@ export class ComprehensiveResearchSystem {
         }
         
         return `---
-title: ${item.name}
-type: comprehensive-research
-status: processing
-created: ${today}
-tags: 
-  - research
-  - auto-generated
-  - processing
-  - "${item.id}"
+project: "${options.projectName || 'Default Research Project'}"
+status: "in-progress"
+created: "${today}"
+updated: "${today}"
+quality: "pending"
+clippy_id: "${item.id}"
+tags:
+  - research/general
 ---
 
 # 🔬 ${item.name}
@@ -434,11 +574,23 @@ tags:
     /**
      * Find vault notes containing exact words from the checklist item.
      */
-    private async findVaultNotesWithExactWords(searchTerm: string): Promise<VaultNote[]> {
+    private async findVaultNotesWithExactWords(searchTerm: string, options: any = {}): Promise<VaultNote[]> {
         const vaultNotes: VaultNote[] = [];
         const markdownFiles = this.app.vault.getMarkdownFiles();
         
-        // Split search term into individual words for exact matching
+        // Get vault search options from centralized RAG settings
+        const maxVaultNotes = options.maxVaultNotes || this.plugin?.settings?.rag?.retrieval?.maxResults || 10;
+        const useSemanticSearch = options.enableSemanticSearch ?? this.plugin?.settings?.rag?.advanced?.enableSemanticSearch ?? true;
+        const vaultMinRelevance = options.vaultMinRelevance || this.plugin?.settings?.rag?.retrieval?.minRelevanceScore || 0.3;
+        
+        console.log(`📚 Vault Search: maxNotes=${maxVaultNotes}, semantic=${useSemanticSearch}, minRelevance=${vaultMinRelevance}`);
+        
+        // If semantic search is enabled, use embedding-based similarity
+        if (useSemanticSearch && this.embeddingManager && this.similarityEngine) {
+            return await this.findVaultNotesWithSemanticSearch(searchTerm, maxVaultNotes, vaultMinRelevance);
+        }
+        
+        // Fallback to exact word matching
         const searchWords = searchTerm.toLowerCase().split(/\s+/);
         
         for (const file of markdownFiles) {
@@ -466,8 +618,70 @@ tags:
             }
         }
 
-        // Sort by similarity (highest first)
-        return vaultNotes.sort((a, b) => b.similarity - a.similarity);
+        // Sort by similarity (highest first) and limit results
+        const sortedNotes = vaultNotes.sort((a, b) => b.similarity - a.similarity);
+        return sortedNotes.slice(0, maxVaultNotes);
+    }
+
+    /**
+     * Find vault notes using semantic search with embeddings.
+     */
+    private async findVaultNotesWithSemanticSearch(
+        searchTerm: string, 
+        maxResults: number, 
+        minRelevance: number
+    ): Promise<VaultNote[]> {
+        const vaultNotes: VaultNote[] = [];
+        const markdownFiles = this.app.vault.getMarkdownFiles();
+        
+        console.log(`🧠 Performing semantic search for: "${searchTerm}"`);
+        
+        // Generate embedding for search term
+        const searchEmbedding = await this.embeddingManager.generateEmbedding(searchTerm);
+        
+        // Calculate similarity with each vault note
+        const similarities: Array<{file: any, content: string, similarity: number}> = [];
+        
+        for (const file of markdownFiles) {
+            try {
+                const content = await this.app.vault.read(file);
+                
+                // Skip very short content
+                if (content.length < 100) continue;
+                
+                // Generate embedding for note content
+                const contentEmbedding = await this.embeddingManager.generateEmbedding(content);
+                
+                // Calculate semantic similarity
+                const similarity = this.similarityEngine.calculateSimilarity(searchEmbedding, contentEmbedding);
+                
+                if (similarity >= minRelevance) {
+                    similarities.push({ file, content, similarity });
+                }
+            } catch (error) {
+                console.warn(`Error processing file ${file.path} for semantic search:`, error);
+            }
+        }
+        
+        // Sort by similarity and take top results
+        const topResults = similarities
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, maxResults);
+        
+        // Convert to VaultNote format
+        for (const result of topResults) {
+            const relevantSections = this.extractRelevantSections(result.content, searchTerm);
+            
+            vaultNotes.push({
+                file: result.file,
+                content: result.content,
+                relevantSections,
+                similarity: result.similarity
+            });
+        }
+        
+        console.log(`🧠 Semantic search found ${vaultNotes.length} relevant notes (min similarity: ${minRelevance})`);
+        return vaultNotes;
     }
 
     /**
@@ -511,12 +725,25 @@ tags:
                     
                     const file = await this.app.vault.create(filePath, noteContent);
                     
+                    // Generate embedding for web search content if semantic search is enabled
+                    let embedding;
+                    const useSemanticSearch = options.enableSemanticSearch ?? this.plugin?.settings?.rag?.advanced?.enableSemanticSearch ?? false;
+                    if (useSemanticSearch && this.embeddingManager) {
+                        try {
+                            embedding = await this.embeddingManager.generateEmbedding(result.content);
+                            console.log(`🧠 Generated embedding for web result: ${result.title}`);
+                        } catch (error) {
+                            console.warn(`Failed to generate embedding for ${result.title}:`, error);
+                        }
+                    }
+                    
                     webSearchNotes.push({
                         file,
                         url: result.url || '',
                         content: result.content,
                         title: result.title,
-                        domain: this.extractDomain(result.url || '')
+                        domain: this.extractDomain(result.url || ''),
+                        embedding
                     });
                     
                     console.log(`💾 Saved web search note: ${fileName}`);
@@ -615,7 +842,9 @@ ${result.url || 'No URL available'}
         try {
             // Get AI provider (placeholder - would use existing CLIPPY AI system)
             const aiResponse = await this.getAIResponse(prompt);
-            return this.parseWisdomResponse(aiResponse, vaultNotes, webSearchNotes);
+            // Remove <thinking> tags from wisdom response
+            const cleanedResponse = this.removeThinkingTags(aiResponse);
+            return this.parseWisdomResponse(cleanedResponse, vaultNotes, webSearchNotes);
         } catch (error) {
             console.error('AI wisdom extraction failed:', error);
             return this.createFallbackWisdom(vaultNotes, webSearchNotes);
@@ -708,10 +937,14 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
                 console.log(`🔍 Found ${templateStructure.headings.length} headings and ${templateStructure.frontmatter.length} frontmatter fields`);
                 
                 // Generate RAG context for the research topic
+                const ragMaxResults = options.ragMaxResults || this.plugin?.settings?.rag?.retrieval?.maxResults || 10;
+                const ragMinRelevance = options.ragMinRelevance || this.plugin?.settings?.rag?.retrieval?.minRelevanceScore || 0.7;
+                
+                console.log(`🧠 RAG Search: maxResults=${ragMaxResults}, minRelevance=${ragMinRelevance}`);
                 const ragContext = await this.ragSystem.search({
                     text: validatedItem.name,
-                    maxResults: 10,
-                    minRelevance: 0.4
+                    maxResults: ragMaxResults,
+                    minRelevance: ragMinRelevance
                 });
 
                 // Use subagents to generate content for each section
@@ -724,23 +957,27 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
                     ragContext
                 );
                 
-                // Generate dynamic frontmatter using FrontmatterExtractorAgent
-                const frontmatterResponse = await this.generateDynamicFrontmatter(
-                    currentContent, 
-                    validatedItem.name, 
-                    ragContext
-                );
-
-                // Apply all updates with mandatory headings
+                // First, apply all content updates WITHOUT frontmatter to populate the note body
                 let updatedContent = await this.applyAllUpdatesWithMandatorySections(
                     currentContent, 
                     validatedItem, 
                     sectionResponses, 
-                    frontmatterResponse,
+                    '', // Empty frontmatter for now - we'll generate it after content is populated
                     validatedWisdom, 
                     vaultNotes, 
                     webSearchNotes
                 );
+
+                // Now generate dynamic frontmatter using the populated content for better context
+                console.log(`🏷️ Generating frontmatter AFTER content population for: ${validatedItem.name}`);
+                const frontmatterResponse = await this.generateDynamicFrontmatter(
+                    updatedContent, 
+                    validatedItem.name, 
+                    ragContext
+                );
+
+                // Apply the generated frontmatter to the populated content
+                updatedContent = this.replaceFrontmatter(updatedContent, frontmatterResponse);
 
                 // Update status checkboxes
                 updatedContent = this.updateStatusCheckboxes(updatedContent);
@@ -814,11 +1051,14 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
 
             // Mark enhancement as complete
             const content = await this.app.vault.read(noteFile);
-            const updatedContent = content
+            let updatedContent = content
                 .replace('- [ ] Note enhanced', '- [x] Note enhanced')
                 .replace('- [ ] Research completed', '- [x] Research completed')
-                .replace('status: processing', 'status: completed')
                 .replace('🔄 Status: Processing', '✅ Status: Completed');
+
+            // Update status more robustly
+            updatedContent = updatedContent.replace(/^status:\s*"?in-progress"?$/m, 'status: "needs-review"');
+            updatedContent = updatedContent.replace(/^status:\s*in-progress$/m, 'status: needs-review');
 
             await this.app.vault.modify(noteFile, updatedContent);
 
@@ -891,16 +1131,30 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
     }
 
     private generateOverview(term: string, wisdom: ExtractedWisdom): string {
-        return `${term} is a comprehensive research topic with multiple applications and considerations. This research compilation includes information from both personal vault notes and web sources to provide a complete understanding.
-
-**Key aspects covered:**
-- Definitions and terminology
-- Practical applications and uses
-- Safety considerations and warnings
-- Scientific research and evidence
-- Related concepts and connections
-
-**Sources analyzed:** ${wisdom.sources.length} total references including vault notes and web sources.`;
+        // Generate overview based on available wisdom content
+        const hasDefinitions = wisdom.definitions.length > 0;
+        const hasUses = wisdom.uses.length > 0;
+        const hasWarnings = wisdom.warnings.length > 0;
+        const hasFindings = wisdom.researchFindings.length > 0;
+        const hasRelated = wisdom.relatedConcepts.length > 0;
+        
+        let overview = `This research compilation provides comprehensive information about ${term}.`;
+        
+        // Add sections based on available content
+        const availableSections = [];
+        if (hasDefinitions) availableSections.push('definitions and terminology');
+        if (hasUses) availableSections.push('practical applications');
+        if (hasWarnings) availableSections.push('safety considerations');
+        if (hasFindings) availableSections.push('research findings');
+        if (hasRelated) availableSections.push('related concepts');
+        
+        if (availableSections.length > 0) {
+            overview += ` The information covers ${availableSections.join(', ')}.`;
+        }
+        
+        overview += `\n\n**Sources analyzed:** ${wisdom.sources.length} total references including vault notes and web sources.`;
+        
+        return overview;
     }
 
     private formatWisdomContent(items: string[], prefix: string = '- ', separator: string = '\n'): string {
@@ -932,12 +1186,12 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
         return sections.join('\n\n') || 'Comprehensive analysis completed from all available sources.';
     }
 
-    private updateLegacySections(content: string, wisdom: ExtractedWisdom, vaultNotes: VaultNote[], webSearchNotes: WebSearchNote[]): string {
+    private updateLegacySections(content: string, wisdom: ExtractedWisdom, vaultNotes: VaultNote[], webSearchNotes: WebSearchNote[], searchTerm?: string): string {
         // Handle legacy template format with placeholder replacement
         let updatedContent = content;
 
         // Update overview
-        const overview = this.generateOverview('research topic', wisdom);
+        const overview = this.generateOverview(searchTerm || 'research topic', wisdom);
         updatedContent = this.replacePlaceholder(updatedContent, '## 📖 Overview', overview);
 
         // Update sections with actual extracted wisdom
@@ -1062,6 +1316,44 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
     }
 
     /**
+     * Create section-specific context based on heading type and content
+     */
+    private createSectionContext(sectionTitle: string, searchTerm: string, wisdom: ExtractedWisdom): string {
+        const titleLower = sectionTitle.toLowerCase();
+        
+        // Determine section type and provide focused context
+        if (titleLower.includes('overview') || titleLower.includes('introduction') || titleLower.includes('description')) {
+            return `This section should provide a comprehensive overview of ${searchTerm}, including its basic definition, key characteristics, and general information.`;
+        }
+        
+        if (titleLower.includes('use') || titleLower.includes('application') || titleLower.includes('benefit')) {
+            const relevantUses = wisdom.uses.length > 0 ? ` Key uses identified: ${wisdom.uses.join(', ')}.` : '';
+            return `This section should focus on the practical uses, applications, and benefits of ${searchTerm}.${relevantUses}`;
+        }
+        
+        if (titleLower.includes('warning') || titleLower.includes('precaution') || titleLower.includes('safety') || titleLower.includes('risk')) {
+            const relevantWarnings = wisdom.warnings.length > 0 ? ` Key warnings identified: ${wisdom.warnings.join(', ')}.` : '';
+            return `This section should focus on warnings, precautions, safety considerations, and potential risks related to ${searchTerm}.${relevantWarnings}`;
+        }
+        
+        if (titleLower.includes('research') || titleLower.includes('finding') || titleLower.includes('study') || titleLower.includes('evidence')) {
+            const relevantFindings = wisdom.researchFindings.length > 0 ? ` Key findings identified: ${wisdom.researchFindings.join(', ')}.` : '';
+            return `This section should focus on research findings, scientific studies, and evidence-based information about ${searchTerm}.${relevantFindings}`;
+        }
+        
+        if (titleLower.includes('propert') || titleLower.includes('characteristic') || titleLower.includes('feature')) {
+            return `This section should focus on the properties, characteristics, and key features of ${searchTerm}.`;
+        }
+        
+        if (titleLower.includes('source') || titleLower.includes('reference') || titleLower.includes('citation')) {
+            return `This section contains source information and references for the research on ${searchTerm}.`;
+        }
+        
+        // Default context for unrecognized section types
+        return `This section ("${sectionTitle}") should provide specific information about ${searchTerm} as it relates to the section topic.`;
+    }
+
+    /**
      * Generate AI responses for all identified sections
      */
     private async generateResponsesForAllSections(
@@ -1088,7 +1380,9 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
 
             try {
                 const response = await this.getAIResponse(prompt);
-                responses.set(heading.fullMatch, response);
+                // Remove <thinking> tags from response
+                const cleanedResponse = this.removeThinkingTags(response);
+                responses.set(heading.fullMatch, cleanedResponse);
             } catch (error) {
                 console.warn(`Failed to generate AI response for "${heading.text}":`, error);
                 responses.set(heading.fullMatch, this.getFallbackContent(heading.text, wisdom));
@@ -1104,7 +1398,9 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
                 
                 try {
                     const response = await this.getAIResponse(prompt);
-                    responses.set(`frontmatter_${field.key}`, response.trim());
+                    // Remove <thinking> tags from frontmatter response - ALWAYS force clean
+                    const cleanedResponse = this.removeThinkingTags(response, true);
+                    responses.set(`frontmatter_${field.key}`, cleanedResponse.trim());
                 } catch (error) {
                     console.warn(`Failed to generate frontmatter for "${field.key}":`, error);
                     responses.set(`frontmatter_${field.key}`, this.getFallbackFrontmatterValue(field.key, searchTerm));
@@ -1126,36 +1422,59 @@ Focus on accuracy, cite contradictions if found, and prioritize information from
         vaultNotes: VaultNote[],
         webSearchNotes: WebSearchNote[]
     ): string {
-        const allSources = [
-            ...vaultNotes.map(n => n.file.basename),
-            ...webSearchNotes.map(n => n.title)
-        ].join(', ');
+        // Build comprehensive context from vault notes
+        const vaultContext = vaultNotes.length > 0 ? 
+            vaultNotes.map(note => {
+                const preview = note.relevantSections.join(' ').slice(0, 300);
+                return `**${note.file.basename}**: ${preview}...`;
+            }).join('\n\n') 
+            : 'No relevant vault notes found.';
 
-        return `You are writing a specific section about "${searchTerm}" for a research document.
+        // Build comprehensive context from web search results
+        const webContext = webSearchNotes.length > 0 ?
+            webSearchNotes.map(note => {
+                const preview = note.content.slice(0, 300);
+                return `**${note.title}** (${note.url}): ${preview}...`;
+            }).join('\n\n')
+            : 'No web search results available.';
 
-**Section to write:** ${sectionTitle} (Heading Level ${level})
+        // Create section-specific context based on heading type
+        const sectionContext = this.createSectionContext(sectionTitle, searchTerm, wisdom);
 
-**Available Research Data:**
-- Key Facts: ${wisdom.keyFacts.join('; ')}
-- Definitions: ${wisdom.definitions.join('; ')}
-- Uses: ${wisdom.uses.join('; ')}
-- Warnings: ${wisdom.warnings.join('; ')}
-- Research Findings: ${wisdom.researchFindings.join('; ')}
-- Related Concepts: ${wisdom.relatedConcepts.join('; ')}
+        return `You are a research specialist writing the "${sectionTitle}" section about "${searchTerm}".
 
-**Sources:** ${allSources}
+**RESEARCH TOPIC:** ${searchTerm}
+**SECTION FOCUS:** ${sectionTitle}
+**SECTION LEVEL:** ${level}
 
-**Instructions:**
-1. Write content specifically for the "${sectionTitle}" section
-2. Focus only on information relevant to this section heading
-3. Use bullet points, paragraphs, or lists as appropriate for the content
-4. Make it informative and well-structured
-5. Do NOT include the heading itself in your response - just the content
-6. If this appears to be about definitions, focus on definitions
-7. If this appears to be about uses/applications, focus on those
-8. If this appears to be about warnings/safety, focus on precautions
+**SECTION-SPECIFIC CONTEXT:**
+${sectionContext}
 
-Write 2-4 substantial points for this section:`;
+**VAULT REFERENCES:**
+${vaultContext}
+
+**WEB SEARCH RESULTS:**
+${webContext}
+
+**EXTRACTED RESEARCH DATA:**
+- Key Facts: ${wisdom.keyFacts.length > 0 ? wisdom.keyFacts.join('; ') : 'None extracted'}
+- Definitions: ${wisdom.definitions.length > 0 ? wisdom.definitions.join('; ') : 'None extracted'}
+- Uses/Applications: ${wisdom.uses.length > 0 ? wisdom.uses.join('; ') : 'None extracted'}
+- Warnings/Precautions: ${wisdom.warnings.length > 0 ? wisdom.warnings.join('; ') : 'None extracted'}
+- Research Findings: ${wisdom.researchFindings.length > 0 ? wisdom.researchFindings.join('; ') : 'None extracted'}
+- Related Concepts: ${wisdom.relatedConcepts.length > 0 ? wisdom.relatedConcepts.join('; ') : 'None extracted'}
+
+**INSTRUCTIONS:**
+1. Write content specifically for the "${sectionTitle}" section about "${searchTerm}"
+2. Use ALL available context (vault references, web results, and extracted data)
+3. Focus on information that directly relates to "${sectionTitle}" as it pertains to "${searchTerm}"
+4. Write 2-4 substantial, informative paragraphs or bullet points
+5. Make the content specific to "${searchTerm}" - avoid generic responses
+6. Do NOT include the heading itself in your response
+7. If sources are limited, acknowledge this but provide what information is available
+8. Format content appropriately (paragraphs, bullet points, or lists)
+
+**CRITICAL:** Your response should be directly about "${searchTerm}" in the context of "${sectionTitle}". Do not write conversational responses or meta-commentary about the research process.`;
     }
 
     /**
@@ -1164,63 +1483,62 @@ Write 2-4 substantial points for this section:`;
     private createFrontmatterPrompt(searchTerm: string, fieldKey: string, wisdom: ExtractedWisdom): string {
         const fieldLower = fieldKey.toLowerCase();
         
-        // Detect research context type
-        const isHerbalMedicine = this.detectHerbalMedicine(searchTerm, wisdom);
-        const isManga = this.detectManga(searchTerm, wisdom);
-        const isFood = this.detectFood(searchTerm, wisdom);
-        
         if (fieldLower.includes('tag')) {
-            return `Generate specific descriptive tags for "${searchTerm}" research.
+            return `Generate YAML-formatted tags for "${searchTerm}" research.
 
 **Research Context:**
 - Topic: ${searchTerm}
 - Key facts: ${wisdom.keyFacts.slice(0, 3).join('; ')}
 - Uses: ${wisdom.uses.slice(0, 2).join('; ')}
 
-**Tag Types Needed:**
-${isHerbalMedicine ? `
-- Properties: hot, warm, cool, cold, neutral
-- Taste: bitter, sweet, sour, pungent, salty
-- Functions: stops-bleeding, moves-qi, clears-heat, tonifies
-- Meridians: liver, lung, kidney, heart, spleen, stomach
-- Dosage range: like "3-9g" or "9-30g"` : ''}
-${isManga ? `
-- Genre: shonen, seinen, josei, shoujo, action, romance, supernatural
-- Status: ongoing, completed, hiatus
-- Rating: teen, mature, all-ages
-- Themes: school, fantasy, sci-fi, slice-of-life` : ''}
-${isFood ? `
-- Taste: sweet, savory, spicy, umami, bitter
-- Texture: crispy, soft, chewy, crunchy
-- Origin: japanese, chinese, italian, etc
-- Type: snack, main-dish, dessert, beverage` : ''}
+**Tag Categories (adapt to your specific topic):**
+- **Properties**: Key characteristics, attributes, qualities
+- **Functions**: What it does, purposes, capabilities  
+- **Type**: Classification, category, variant
+- **Scope**: Range, application area, domain
+- **Status**: Current state, maturity level
+- **Context**: Field, industry, use case
 
-**Format:** [tag1, tag2, tag3, tag4, tag5]
-**Instructions:** Use short, specific descriptors. No generic words like "research" or "analysis". Focus on the actual properties and characteristics.
+**Instructions:** 
+- Return ONLY the hyphenated list format below (NO "tags:" prefix)
+- Use short, specific descriptors (no spaces in individual tags)
+- No generic words like "research" or "analysis"
+- Focus on actual properties and characteristics relevant to ${searchTerm}
+- Generate 4-6 specific tags that accurately describe the topic
+- Make tags useful for categorization and discovery
 
-Generate 4-6 specific tags:`;
+**Required Format (EXACTLY like this, no "tags:" line):**
+- tag1
+- tag2  
+- tag3
+- tag4
+- tag5`;
         }
         
-        if (fieldLower.includes('properties') && isHerbalMedicine) {
-            return `List the medicinal properties of "${searchTerm}" based on traditional medicine.
+        if (fieldLower.includes('properties')) {
+            return `List the key properties of "${searchTerm}" based on the research data.
 
 **Available Data:** ${wisdom.keyFacts.join('; ')}
 
-**Format as:** [property1, property2, property3]
-**Examples:** [bitter, cold, toxic] or [sweet, warm, moistening]
+**Instructions:**
+- Extract 2-4 specific properties or characteristics
+- Use descriptive terms relevant to the topic
+- Format as a simple list
 
-Generate properties list:`;
+Generate properties:`;
         }
         
-        if (fieldLower.includes('dosage') && isHerbalMedicine) {
-            return `Extract the typical dosage range for "${searchTerm}" from the research data.
+        if (fieldLower.includes('type') || fieldLower.includes('category')) {
+            return `Classify the type or category of "${searchTerm}" based on the research data.
 
 **Available Data:** ${wisdom.keyFacts.join('; ')}
 
-**Format:** "X-Yg" or "X-Y grams" 
-**Examples:** "3-9g", "6-15g", "9-30g"
+**Instructions:**
+- Provide 1-2 specific classification terms
+- Use standard terminology for the field
+- Be precise and descriptive
 
-Generate dosage:`;
+Generate type/category:`;
         }
 
         // Generic frontmatter handling
@@ -1244,63 +1562,6 @@ Generate dosage:`;
 **Respond with only the value (no quotes unless it's a string that needs them):**`;
     }
 
-    /**
-     * Detect if this is herbal medicine research
-     */
-    private detectHerbalMedicine(searchTerm: string, wisdom: ExtractedWisdom): boolean {
-        const indicators = [
-            'herb', 'herbal', 'medicine', 'tcm', 'traditional chinese medicine',
-            'meridian', 'qi', 'yang', 'yin', 'tonify', 'dispel', 'clear heat',
-            'dosage', 'grams', 'decoction', 'powder', 'root', 'leaf', 'flower'
-        ];
-        
-        const allText = [
-            searchTerm,
-            ...wisdom.keyFacts,
-            ...wisdom.definitions,
-            ...wisdom.uses
-        ].join(' ').toLowerCase();
-        
-        return indicators.some(indicator => allText.includes(indicator));
-    }
-
-    /**
-     * Detect if this is manga research
-     */
-    private detectManga(searchTerm: string, wisdom: ExtractedWisdom): boolean {
-        const indicators = [
-            'manga', 'anime', 'chapter', 'volume', 'shonen', 'seinen', 'josei', 'shoujo',
-            'japanese comic', 'serialized', 'weekly', 'monthly', 'jump', 'magazine'
-        ];
-        
-        const allText = [
-            searchTerm,
-            ...wisdom.keyFacts,
-            ...wisdom.definitions,
-            ...wisdom.uses
-        ].join(' ').toLowerCase();
-        
-        return indicators.some(indicator => allText.includes(indicator));
-    }
-
-    /**
-     * Detect if this is food research
-     */
-    private detectFood(searchTerm: string, wisdom: ExtractedWisdom): boolean {
-        const indicators = [
-            'food', 'recipe', 'ingredient', 'cooking', 'cuisine', 'dish', 'meal',
-            'flavor', 'taste', 'restaurant', 'culinary', 'eat', 'drink'
-        ];
-        
-        const allText = [
-            searchTerm,
-            ...wisdom.keyFacts,
-            ...wisdom.definitions,
-            ...wisdom.uses
-        ].join(' ').toLowerCase();
-        
-        return indicators.some(indicator => allText.includes(indicator));
-    }
 
     /**
      * Apply all updates to the content
@@ -1350,7 +1611,7 @@ Generate dosage:`;
         }
 
         // Also apply legacy updates for backwards compatibility
-        updatedContent = this.updateLegacySections(updatedContent, wisdom, vaultNotes, webSearchNotes);
+        updatedContent = this.updateLegacySections(updatedContent, wisdom, vaultNotes, webSearchNotes, item.name);
 
         return updatedContent;
     }
@@ -1682,13 +1943,58 @@ Generate dosage:`;
         // Generate content for each section using SectionSpecialistAgent
         for (const heading of templateStructure.headings || []) {
             try {
+                // Build comprehensive context for this section
+                const vaultContext = vaultNotes.length > 0 ? 
+                    vaultNotes.map(note => {
+                        const preview = note.relevantSections.join(' ').slice(0, 300);
+                        return `**${note.file.basename}**: ${preview}...`;
+                    }).join('\n\n') 
+                    : 'No relevant vault notes found.';
+
+                const webContext = webSearchNotes.length > 0 ?
+                    webSearchNotes.map(note => {
+                        const preview = note.content.slice(0, 300);
+                        return `**${note.title}** (${note.url}): ${preview}...`;
+                    }).join('\n\n')
+                    : 'No web search results available.';
+
+                const sectionContext = this.createSectionContext(heading, searchTerm, wisdom);
+
+                const comprehensivePrompt = `You are a research specialist writing the "${heading}" section about "${searchTerm}".
+
+**RESEARCH TOPIC:** ${searchTerm}
+**SECTION FOCUS:** ${heading}
+
+**SECTION-SPECIFIC CONTEXT:**
+${sectionContext}
+
+**VAULT REFERENCES:**
+${vaultContext}
+
+**WEB SEARCH RESULTS:**
+${webContext}
+
+**EXTRACTED RESEARCH DATA:**
+- Key Facts: ${wisdom.keyFacts.length > 0 ? wisdom.keyFacts.join('; ') : 'None extracted'}
+- Definitions: ${wisdom.definitions.length > 0 ? wisdom.definitions.join('; ') : 'None extracted'}
+- Uses/Applications: ${wisdom.uses.length > 0 ? wisdom.uses.join('; ') : 'None extracted'}
+- Warnings/Precautions: ${wisdom.warnings.length > 0 ? wisdom.warnings.join('; ') : 'None extracted'}
+- Research Findings: ${wisdom.researchFindings.length > 0 ? wisdom.researchFindings.join('; ') : 'None extracted'}
+- Related Concepts: ${wisdom.relatedConcepts.length > 0 ? wisdom.relatedConcepts.join('; ') : 'None extracted'}
+
+**INSTRUCTIONS:**
+Write content specifically for the "${heading}" section about "${searchTerm}". Use ALL available context and focus on information that directly relates to "${heading}" as it pertains to "${searchTerm}". Write 2-4 substantial, informative paragraphs or bullet points. Make the content specific to "${searchTerm}" - avoid generic responses. Do NOT include the heading itself in your response.`;
+
                 const sectionResult = await this.subagentCoordinator.executeAgent('sectionSpecialist', {
-                    task: `Generate content for "${heading}" section about "${searchTerm}"`,
+                    task: `Write the "${heading}" section about "${searchTerm}"`,
                     input: {
                         sectionName: heading,
-                        sectionContext: `Section heading: ${heading}`,
+                        sectionContext: comprehensivePrompt,
                         topic: searchTerm,
-                        template: templateStructure
+                        template: templateStructure,
+                        vaultContext: vaultContext,
+                        webContext: webContext,
+                        wisdom: wisdom
                     },
                     ragContext: ragContext
                 });
@@ -1744,7 +2050,9 @@ Generate dosage:`;
 
             if (frontmatterResult.success) {
                 console.log(`✨ Generated dynamic frontmatter using FrontmatterExtractorAgent`);
-                return frontmatterResult.output;
+                // ALWAYS clean thinking tags from AI-generated frontmatter
+                const cleanedOutput = this.removeThinkingTags(frontmatterResult.output, true);
+                return cleanedOutput;
             } else {
                 console.warn(`FrontmatterExtractorAgent failed: ${frontmatterResult.reasoning}`);
                 return currentFrontmatter;
@@ -1769,8 +2077,8 @@ Generate dosage:`;
     ): Promise<string> {
         let updatedContent = currentContent;
 
-        // Generate intelligent tags for the research note
-        const enhancedFrontmatter = await this.enhanceFrontmatterWithSmartTags(
+        // Generate intelligent tags for the research note using centralized system
+        const enhancedFrontmatter = await this.enhanceFrontmatterWithCentralizedTags(
             frontmatterResponse, 
             updatedContent, 
             item.name
@@ -1840,9 +2148,81 @@ Generate dosage:`;
     /**
      * Remove <thinking> tags from AI responses based on settings.
      */
-    private removeThinkingTags(content: string): string {
+    private removeThinkingTags(content: string, forceCleaning: boolean = false): string {
         const showThinkingTags = this.plugin?.settings?.research?.defaults?.showThinkingTags || false;
-        return processThinkingTags(content, { showThinkingTags });
+        
+        // If forceCleaning is true (for frontmatter), always remove thinking tags regardless of settings
+        const shouldShowTags = forceCleaning ? false : showThinkingTags;
+        
+        if (forceCleaning || !shouldShowTags) {
+            // ULTRA-AGGRESSIVE removal for frontmatter - remove ALL content between tags
+            let cleaned = content;
+            
+            // Multiple passes with different patterns to catch all variations
+            for (let i = 0; i < 7; i++) {
+                const beforeClean = cleaned;
+                
+                // Primary patterns - remove EVERYTHING between tags (greedy and non-greedy)
+                cleaned = cleaned
+                  .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')  // Non-greedy
+                  .replace(/<thinking>[\s\S]*<\/thinking>/gi, '')   // Greedy for nested
+                  .replace(/<think>[\s\S]*?<\/think>/gi, '')       // Non-greedy  
+                  .replace(/<think>[\s\S]*<\/think>/gi, '')        // Greedy for nested
+                  
+                  // Handle broken/malformed tags
+                  .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, '')
+                  .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, '')
+                  
+                  // Handle cases where closing tag might be missing
+                  .replace(/<thinking>[\s\S]*$/gi, '')  // From opening tag to end
+                  .replace(/<think>[\s\S]*$/gi, '')     // From opening tag to end
+                  
+                  // Clean up orphaned closing tags
+                  .replace(/<\/thinking>/gi, '')
+                  .replace(/<\/think>/gi, '')
+                  
+                  // Clean up orphaned opening tags  
+                  .replace(/<thinking[^>]*>/gi, '')
+                  .replace(/<think[^>]*>/gi, '')
+                  
+                  // Remove field names that might appear in YAML
+                  .replace(/^\s*thinking\s*:\s*.*$/gmi, '')  // Remove thinking: field lines
+                  .replace(/^\s*think\s*:\s*.*$/gmi, '');    // Remove think: field lines
+                
+                // Break if no changes were made
+                if (cleaned === beforeClean) break;
+            }
+            
+            // Final cleanup
+            return cleaned
+              .replace(/\n\s*\n\s*\n/g, '\n\n')  // Reduce multiple newlines
+              .replace(/^\s*\n/gm, '')           // Remove lines with only whitespace
+              .replace(/\n\s*$/g, '')            // Remove trailing whitespace lines
+              .trim();
+        }
+        
+        return processThinkingTags(content, { showThinkingTags: shouldShowTags });
+    }
+
+    /**
+     * Generate a meaningful project name from checklist items.
+     */
+    private generateProjectName(checklist: ChecklistItem[]): string {
+        if (!checklist || checklist.length === 0) {
+            return `Research Project ${new Date().toLocaleDateString()}`;
+        }
+
+        // Get the first few item names to create a meaningful project title
+        const itemNames = checklist.slice(0, 3).map(item => item.name);
+        
+        if (itemNames.length === 1) {
+            return `${itemNames[0]} Research`;
+        } else if (itemNames.length === 2) {
+            return `${itemNames[0]} & ${itemNames[1]} Research`;
+        } else {
+            // For 3+ items, show first two and indicate there are more
+            return `${itemNames[0]}, ${itemNames[1]} & ${checklist.length - 2} More Research`;
+        }
     }
 
     /**
@@ -1860,64 +2240,272 @@ Generate dosage:`;
     }
 
     /**
-     * Replace frontmatter in content.
+     * Replace frontmatter in content with proper cleanup.
      */
     private replaceFrontmatter(content: string, newFrontmatter: string): string {
-        return replaceFrontmatter(content, newFrontmatter);
+        // Clean frontmatter of any thinking tags and formatting issues
+        const cleanedFrontmatter = this.cleanFrontmatter(newFrontmatter);
+        return replaceFrontmatter(content, cleanedFrontmatter);
     }
 
     /**
-     * Enhance frontmatter with intelligent tags using AutoTagger.
+     * Clean frontmatter of thinking tags and format properly for YAML.
      */
-    private async enhanceFrontmatterWithSmartTags(
+    private cleanFrontmatter(frontmatter: string): string {
+        let cleaned = frontmatter;
+        
+        // AGGRESSIVE thinking tag removal - do this FIRST and MULTIPLE times
+        for (let i = 0; i < 3; i++) {
+            cleaned = cleaned
+              .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+              .replace(/<think>[\s\S]*?<\/think>/gi, '')
+              .replace(/<\/thinking>/gi, '')
+              .replace(/<thinking>/gi, '')
+              .replace(/<\/think>/gi, '')
+              .replace(/<think>/gi, '');
+        }
+        
+        // Force clean using the utility function
+        cleaned = this.removeThinkingTags(cleaned, true);
+        
+        // Fix YAML formatting issues AFTER cleaning thinking tags
+        cleaned = this.formatYAMLFrontmatter(cleaned);
+        
+        // Final aggressive cleanup of any remaining artifacts
+        cleaned = cleaned
+          .replace(/thinking[\s]*:/gi, '') // Remove thinking field names
+          .replace(/think[\s]*:/gi, '') // Remove think field names
+          .replace(/\n\n+/g, '\n')
+          .replace(/^\s*\n/gm, '') // Remove empty lines
+          .trim();
+        
+        console.log('🧹 Cleaned frontmatter, final result:', cleaned.substring(0, 200) + '...');
+        
+        return cleaned;
+    }
+
+    /**
+     * Format frontmatter to ensure proper YAML structure.
+     */
+    private formatYAMLFrontmatter(frontmatter: string): string {
+        const lines = frontmatter.split('\n');
+        const formattedLines: string[] = [];
+        
+        for (const line of lines) {
+            let cleanLine = line.trim();
+            
+            // Skip empty lines
+            if (!cleanLine) continue;
+            
+            // Handle tags field specially to ensure proper YAML array format
+            if (cleanLine.startsWith('tags:')) {
+                const afterColon = cleanLine.substring(5).trim();
+                
+                if (afterColon.startsWith('- ')) {
+                    // Format: "tags: - tag1" - split into proper YAML format
+                    formattedLines.push('tags:');
+                    const tagValue = afterColon.substring(2).trim();
+                    const cleanTag = tagValue.replace(/^["']|["']$/g, ''); // Remove quotes
+                    formattedLines.push(`  - ${cleanTag}`);
+                } else if (afterColon === '') {
+                    // Format: "tags:" - already correct
+                    formattedLines.push('tags:');
+                } else {
+                    // Format: "tags: value" - treat as single tag
+                    formattedLines.push('tags:');
+                    const cleanTag = afterColon.replace(/^["']|["']$/g, ''); // Remove quotes
+                    formattedLines.push(`  - ${cleanTag}`);
+                }
+            } else if (cleanLine.startsWith('-') && formattedLines.length > 0 && formattedLines[formattedLines.length - 1] === 'tags:') {
+                // This is a tag item - ensure proper indentation and no quotes around single words
+                const tagValue = cleanLine.substring(1).trim();
+                const cleanTag = tagValue.replace(/^["']|["']$/g, ''); // Remove quotes
+                formattedLines.push(`  - ${cleanTag}`);
+            } else if (cleanLine.startsWith('-') && formattedLines.length > 0 && formattedLines[formattedLines.length - 1].startsWith('  -')) {
+                // Continue tag list
+                const tagValue = cleanLine.substring(1).trim();
+                const cleanTag = tagValue.replace(/^["']|["']$/g, ''); // Remove quotes
+                formattedLines.push(`  - ${cleanTag}`);
+            } else {
+                // Regular frontmatter field
+                formattedLines.push(cleanLine);
+            }
+        }
+        
+        return formattedLines.join('\n');
+    }
+
+    /**
+     * Enhance frontmatter with intelligent tags using CentralizedTaggingSystem.
+     */
+    private async enhanceFrontmatterWithCentralizedTags(
         originalFrontmatter: string,
         noteContent: string,
         researchTopic: string
     ): Promise<string> {
-        if (!this.autoTagger) {
-            console.log('AutoTagger not available, using original frontmatter');
-            return originalFrontmatter;
-        }
-
         try {
-            // Extract existing tags from frontmatter
-            const existingTags = this.extractTagsFromFrontmatter(originalFrontmatter);
+            // Import and initialize centralized tagging system
+            const { CentralizedTaggingSystem } = await import('../features/content-processing/services/centralized-tagging-system');
             
+            const aiProvider = await this.plugin.getAIProvider();
+            if (!aiProvider) {
+                console.warn('No AI provider available for tagging');
+                return originalFrontmatter;
+            }
+            
+            const centralizedTagger = new CentralizedTaggingSystem(
+                this.app,
+                aiProvider,
+                this.plugin.vaultPatterns || { tagPatterns: [], dateFormats: [], linkPatterns: [], orphans: [] }
+            );
+
             // Generate content for tag analysis (combine topic + note content)
             const contentForAnalysis = `# ${researchTopic}\n\n${this.removeExistingFrontmatter(noteContent)}`;
-            
-            // Get AI-powered tag suggestions with error boundary
-            const tagSuggestions = await ClippyErrorBoundaries.aiProviderOperation(
-                () => this.autoTagger.suggestTags(contentForAnalysis, existingTags),
-                'generate smart tags',
+
+            // Generate smart tags with research context
+            const tagResult = await centralizedTagger.generateSmartTags(
+                contentForAnalysis,
+                `research topic: ${researchTopic}`,
                 {
-                    fallback: async () => {
-                        console.log('AutoTagger failed, returning empty suggestions');
-                        return [];
-                    },
-                    showUserNotice: false
+                    maxTags: 8,
+                    minConfidence: 0.4,
+                    includeHierarchical: true,
+                    preserveExisting: true,
+                    formatStyle: 'yaml-list'
                 }
             );
+
+            if (tagResult.normalized.length === 0) {
+                console.log('🏷️ No valid tags generated for research note');
+                return originalFrontmatter;
+            }
+
+            // Generate AI-powered research type based on content and vault trends
+            const researchType = await this.generateResearchType(contentForAnalysis, researchTopic);
             
-            // Extract high-confidence tags (above 0.6 confidence)
-            const smartTags = tagSuggestions
-                .filter((suggestion: TagSuggestion) => suggestion.confidence > 0.6)
-                .map((suggestion: TagSuggestion) => suggestion.tag)
-                .slice(0, 5); // Limit to top 5 suggestions
+            // Format tags properly for YAML frontmatter
+            const formattedTags = centralizedTagger.formatTagsForYAML(tagResult.normalized, 'yaml-list');
             
-            // Combine existing and smart tags
-            const allTags = [...new Set([...existingTags, ...smartTags])];
+            // Update the frontmatter with properly formatted tags and research type
+            let enhancedFrontmatter = this.updateFrontmatterWithFormattedTags(originalFrontmatter, formattedTags);
+            enhancedFrontmatter = this.updateFrontmatterField(enhancedFrontmatter, 'researchType', researchType);
             
-            // Update the frontmatter with enhanced tags
-            const enhancedFrontmatter = this.updateFrontmatterTags(originalFrontmatter, allTags);
+            // Ensure research/general gets replaced with research/{researchType}
+            enhancedFrontmatter = enhancedFrontmatter.replace(
+                /(\s*-\s*)research\/general\b/g, 
+                `$1research/${researchType}`
+            );
             
-            console.log(`🏷️ AutoTagger added ${smartTags.length} intelligent tags for "${researchTopic}": ${smartTags.join(', ')}`);
+            console.log(`🏷️ CentralizedTagger added ${tagResult.normalized.length} standardized tags for "${researchTopic}": ${tagResult.normalized.join(', ')}`);
             
             return enhancedFrontmatter;
             
         } catch (error) {
-            console.error('Failed to enhance frontmatter with smart tags:', error);
+            console.error('Failed to enhance frontmatter with centralized tags:', error);
             return originalFrontmatter;
+        }
+    }
+
+    /**
+     * Generate AI-powered research type based on content and vault trends
+     */
+    private async generateResearchType(content: string, topic: string): Promise<string> {
+        try {
+            // Get vault tag patterns to understand common research areas
+            const vaultPatterns = this.plugin.vaultPatterns?.tagPatterns || [];
+            const commonResearchAreas = vaultPatterns
+                .filter(p => p.pattern.includes('research') || p.pattern.includes('/'))
+                .map(p => p.pattern.replace(/^#+/, ''))
+                .slice(0, 10);
+
+            const prompt = `Based on the research content and common patterns in this vault, determine the most appropriate research subcategory.
+
+**Content Analysis:**
+Topic: ${topic}
+Content: ${content.slice(0, 1000)}...
+
+**Vault Research Patterns:**
+${commonResearchAreas.length > 0 ? commonResearchAreas.join(', ') : 'medical, technology, academic, business, social, scientific, historical'}
+
+**Instructions:**
+1. Analyze the content to understand the research domain
+2. Consider the vault's existing research patterns 
+3. Return ONLY a single word/phrase that best categorizes this research
+4. Use lowercase with hyphens (e.g., "medical", "technology", "social-science", "business-analysis")
+5. If uncertain, use "general"
+
+Research Type:`;
+
+            const aiProvider = await this.plugin.getAIProvider();
+            if (!aiProvider) {
+                console.warn('No AI provider available for research type generation');
+                return 'general';
+            }
+            
+            const response = await aiProvider.generateResponse(prompt);
+            const researchType = response.trim().toLowerCase()
+                .replace(/[^a-z0-9-]/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .substring(0, 20);
+
+            return researchType || 'general';
+
+        } catch (error) {
+            console.error('Failed to generate research type:', error);
+            return 'general';
+        }
+    }
+
+
+    /**
+     * Update frontmatter with properly formatted tags
+     */
+    private updateFrontmatterWithFormattedTags(frontmatter: string, formattedTags: string): string {
+        try {
+            // Remove existing tags section
+            const lines = frontmatter.split('\n');
+            const filteredLines: string[] = [];
+            let inTagsSection = false;
+            
+            for (const line of lines) {
+                const trimmedLine = line.trim();
+                
+                if (trimmedLine.startsWith('tags:')) {
+                    inTagsSection = true;
+                    // Don't add this line, we'll replace with formatted tags
+                    continue;
+                } else if (inTagsSection && trimmedLine.startsWith('- ')) {
+                    // Skip tag lines
+                    continue;
+                } else if (inTagsSection && trimmedLine.length > 0 && !trimmedLine.startsWith(' ')) {
+                    // End of tags section
+                    inTagsSection = false;
+                    filteredLines.push(line);
+                } else if (!inTagsSection) {
+                    filteredLines.push(line);
+                }
+            }
+            
+            // Add the new formatted tags section
+            // Find the position to insert tags (before closing ---)
+            let insertIndex = filteredLines.length - 1; // Before the last line (---)
+            for (let i = 1; i < filteredLines.length - 1; i++) {
+                if (filteredLines[i].trim() === '---') {
+                    insertIndex = i;
+                    break;
+                }
+            }
+            
+            if (formattedTags && formattedTags.trim()) {
+                filteredLines.splice(insertIndex, 0, formattedTags);
+            }
+            
+            return filteredLines.join('\n');
+            
+        } catch (error) {
+            console.error('Failed to update frontmatter with formatted tags:', error);
+            return frontmatter;
         }
     }
 
@@ -2012,6 +2600,13 @@ Generate dosage:`;
         }
         
         return updatedLines.join('\n');
+    }
+
+    /**
+     * Get shared vault patterns for research context
+     */
+    getVaultPatterns(): VaultPatterns | null {
+        return this.plugin?.vaultPatterns || null;
     }
 
     /**

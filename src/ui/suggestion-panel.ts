@@ -1,10 +1,10 @@
 import { Component, MarkdownView, TFile, WorkspaceLeaf, App, Notice, Modal } from 'obsidian';
-import { LinkSuggestionEngine } from '../link-suggestions/suggestion-engine';
-import { KnowledgeGraphManager } from '../knowledge-graph/graph-manager';
-import { OrphanDetector } from '../discovery/orphan-detector';
+import { LinkSuggestionEngine } from '../features/knowledge-management/link-suggestions/suggestion-engine';
+import { KnowledgeGraphManager } from '../features/knowledge-management/knowledge-graph/graph-manager';
+import { OrphanDetector } from '../features/knowledge-management/discovery/orphan-detector';
 import { OrphanManagementModal } from './orphan-management-modal';
-import { EmbeddingManager } from '../semantic/embedding-manager';
-import { SimilarityEngine } from '../semantic/similarity-engine';
+import { EmbeddingManager } from '../features/knowledge-management/semantic/embedding-manager';
+import { SimilarityEngine } from '../features/knowledge-management/semantic/similarity-engine';
 import { BridgeManager } from './bridge-manager';
 
 interface SuggestionItem {
