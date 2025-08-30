@@ -1,0 +1,629 @@
+# Clippy TCG Writer - Product Requirements Document
+## *"You Write, It Fights!"*
+
+## Executive Summary
+
+**Feature Name:** Clippy TCG Writer - AI Trading Card Game Writing Assistant  
+**Plugin:** Clippy (Obsidian AI Enhancement Plugin)  
+**Version:** 3.0 - "Heart of the Cards"  
+**Date:** August 26, 2025  
+**Tagline:** *"You Write, It Fights! Get more done while you hatch eggs based on typing. Might get a shiny, who knows? Only another X keystrokes can tell. But do you have it in you? To stroke your keys? Until now, we never knew."*
+
+The Clippy TCG Writer transforms Obsidian into a living trading card game where your writing performance directly powers character progression, card collection, and pack opening mechanics. Every keystroke feeds an AI-powered RPG system that provides real-time feedback while building a personalized card collection based on your vault's unique structure and content.
+
+---
+
+## DOCUMENTATION:
+https://silentvoid13.github.io/Templater/ - templater
+https://blacksmithgu.github.io/obsidian-dataview/ - dataview
+https://publish.obsidian.md/hub/00+-+Start+here - obsidian hub
+https://github.com/mgmeyers/obsidian-style-settings#obsidian-style-settings-plugin - obsidian style settings
+https://github.com/Rainbell129/Obsidian-Homepage/tree/main - obsidian homepage 
+https://help.obsidian.md/ - obsidian help
+https://publish.obsidian.md/tasks/Reference/Task+Formats/About+Task+Formats - Tasks Format
+https://blacksmithgu.github.io/obsidian-dataview/api/code-reference/ - dataview api
+https://github.com/SilentVoid13/Templater/blob/master/docs/docs/internal-functions/overview.md - templater functions
+
+---
+
+## 1. Product Vision: "The Heart of the Cards" 🎴
+
+### Core Philosophy
+Writing is combat. Every word typed is an attack. Every sentence completed is a battle won. Your productivity builds armies of cards that fight alongside your intellectual growth. The vault becomes your deck, your notes become your cards, and your typing rhythm becomes your battle cry.
+
+### The Magic Formula
+```
+KEYSTROKES → EXP → LEVELS → PACKS → CARDS → POWER → REPEAT
+     ↓
+Real-time AI analysis provides tactical combat feedback
+     ↓
+Vault analytics determine card rarity and special abilities
+     ↓
+Theme customization transforms any writing into any adventure
+```
+
+---
+
+## 2. Core Game Loop: "Write to Fight" ⚔️
+
+### The Fundamental Cycle
+1. **Type X Keystrokes** → Gain 1 EXP, trigger mini-events
+2. **Reach EXP Threshold** → Level up, unlock pack opening
+3. **Open Themed Packs** → RNG rolls determine card rewards
+4. **Cards Auto-Generated** → Based on vault notes and AI analysis
+5. **PlayerCard Evolves** → Character stats grow with collection
+6. **AI Provides Combat Commentary** → Real-time typing performance feedback
+
+### Session Flow Example
+```
+Start Writing → Cursor follows with subtle animation
+↓
+Every 500 keystrokes → "+1 EXP! Pack energy building..."
+↓
+Hit 10 EXP → "LEVEL UP! Pack ready to open!"
+↓
+Open pack interface → 11 cards revealed with animation
+↓
+New cards added to collection → PlayerCard stats updated
+↓
+Continue writing with enhanced character power
+```
+
+---
+
+## 3. Universal Trading Card System 🎯
+
+### Generic Card Framework
+**Every "Card" Contains:**
+- **Card ID**: Maps to Obsidian note filename or generated UUID
+- **Rarity Value**: 1-5 star system (Common to Legendary)
+- **Shiny Boolean**: 0 or 1 (Normal or Shiny variant)
+- **Power Stats**: Derived from note analytics and user performance
+- **Theme Skin**: Visual styling based on user's selected theme
+
+### RNG Pack Opening Mechanics
+**Pack Structure:**
+```typescript
+interface Pack {
+  name: string; // "Booster Pack", "Egg Incubator", "Treasure Chest"
+  cardCount: number; // 5, 11, 15 cards per pack
+  rarityWeights: RarityDistribution;
+  shinyRate: number; // Base 1/512, modified by performance
+  themeTemplate: ThemeDefinition;
+}
+```
+
+**RNG Algorithm:**
+1. **Performance Multiplier**: Recent writing quality affects rarity odds
+2. **Vault Diversity Bonus**: More notes = wider card pool
+3. **Streak Multiplier**: Daily writing streaks boost shiny chances
+4. **Custom Algorithms**: User-defined formulas for pack contents
+
+### Note-to-Card Mapping System
+**Automatic Card Generation:**
+- **Card ID** = Obsidian note filename (e.g., "Meeting-Notes-2025.md")
+- **Base Power** = Note word count, backlink density, creation date
+- **Rarity Calculation** = Note importance (connections × references × recency)
+- **Special Abilities** = Tag-based powers, content themes, update frequency
+
+**Examples:**
+```
+Note: "Daily-Journal-Aug-26.md"
+→ Card: "Daily Reflection" (Common, +Consistency stat)
+
+Note: "Project-Management-Framework.md" 
+→ Card: "Strategic Planning" (Rare, +Organization stat)
+
+Note: "Philosophy-of-Consciousness.md"
+→ Card: "Deep Thoughts" (Epic, +Wisdom stat)
+```
+
+---
+
+## 4. Dynamic Theme System 🎭
+
+### Built-in Theme Templates
+
+#### Pokemon Collection Theme
+- **Packs**: "Egg Incubators" (hatch after X keystrokes)
+- **Cards**: Pokemon species mapped to note types
+- **Rarity**: Starter → Rare → Legendary → Shiny variants
+- **Stats**: Speed, Creativity, Knowledge, Consistency
+- **Special**: Shiny chance increases with writing quality
+
+#### Fantasy RPG Theme  
+- **Packs**: "Treasure Chests" and "Spell Scrolls"
+- **Cards**: Weapons, Armor, Spells, Companions
+- **Rarity**: Common → Uncommon → Rare → Epic → Legendary
+- **Stats**: Strength, Intelligence, Wisdom, Charisma
+- **Special**: Equipment combinations unlock class abilities
+
+#### Space Exploration Theme
+- **Packs**: "Star Charts" and "Alien Artifacts"  
+- **Cards**: Planets, Ships, Alien Species, Technologies
+- **Rarity**: Known → Discovered → Classified → Cosmic → Transcendent
+- **Stats**: Navigation, Research, Diplomacy, Engineering
+- **Special**: Discovery chains unlock galaxy progression
+
+#### Academic Research Theme
+- **Packs**: "Research Papers" and "Citation Collections"
+- **Cards**: Theories, Methodologies, Historical Figures, Discoveries  
+- **Rarity**: Undergraduate → Graduate → Doctoral → Published → Nobel
+- **Stats**: Critical Thinking, Research Skills, Citation Power, Innovation
+- **Special**: Cross-disciplinary combinations create breakthrough bonuses
+
+### Custom Theme Builder
+**User-Defined Elements:**
+- Pack names and opening animations
+- Card visual templates and stat categories
+- Rarity progression and naming conventions
+- Special ability descriptions and mechanics
+- Color schemes and iconography
+
+---
+
+## 5. PlayerCard & Character Progression 📊
+
+### Living Character Sheet Integration
+**Obsidian Note Template:**
+```markdown
+# {{characterName}} - Level {{level}} {{className}}
+
+## Combat Stats
+- **Power Level:** {{totalPower}} ({{powerRank}})
+- **Card Collection:** {{cardCount}}/{{totalPossible}}
+- **Rarity Distribution:** 
+  - Legendary: {{legendaryCount}} ⭐⭐⭐⭐⭐
+  - Epic: {{epicCount}} ⭐⭐⭐⭐
+  - Rare: {{rareCount}} ⭐⭐⭐
+  - Common: {{commonCount}} ⭐⭐
+  - Basic: {{basicCount}} ⭐
+
+## Writing Combat Performance
+- **Total Keystrokes:** {{totalKeystrokes:,}}
+- **Current Streak:** {{streakDays}} days
+- **Average KPM:** {{averageKPM}}
+- **AI Quality Score:** {{qualityScore}}/100
+
+## Recent Victories
+{{#each recentPacks}}
+- {{timestamp}}: Opened {{packName}} - Got {{rareCard}}! {{#if shiny}}✨ SHINY! ✨{{/if}}
+{{/each}}
+
+## Active Deck Power
+{{#each activeDeck}}
+- {{cardName}} ({{rarity}}) - {{specialAbility}}
+{{/each}}
+
+## Next Milestone
+- **EXP to Next Level:** {{expToNext}}/{{expRequired}}
+- **Keystrokes to Next Pack:** {{keystrokesToPack}}
+- **Shiny Hunt Progress:** {{shinyHuntStreak}} attempts
+```
+
+### Progression Formulas (User Customizable)
+**Default Formulas:**
+```javascript
+// EXP Requirements (exponential growth)
+expToNextLevel = Math.floor(50 * Math.pow(level, 1.5))
+
+// Pack Unlock Frequency  
+keystrokesPerPack = 1000 + (level * 100) // Gets harder as you level
+
+// Shiny Rate Calculation
+shinyRate = baseRate * (1 + qualityBonus) * (1 + streakBonus)
+
+// Power Level Calculation
+totalPower = sumOf(cardPowers) * levelMultiplier * collectionBonus
+```
+
+**Custom Formula Examples:**
+```javascript
+// Easy Mode: Frequent rewards
+expToNextLevel = level * 25
+
+// Hard Mode: Rare but meaningful
+expToNextLevel = Math.pow(level, 2.5)
+
+// Quality-Based: Good writing = faster progress
+keystrokesPerPack = Math.max(500, 2000 - (qualityScore * 15))
+```
+
+---
+
+## 6. AI Combat Commentary System 🤖⚔️
+
+### Real-Time Battle Feedback
+**Typing Performance Analysis:**
+- **High KPM**: *"Lightning fast strikes! Your combo meter is building!"*
+- **Consistent Rhythm**: *"Perfect battle cadence detected. Critical hit chance increased!"*
+- **Flow State**: *"You've entered the zone! All abilities enhanced!"*
+- **Error Corrections**: *"Quick recovery! Defensive maneuvers successful!"*
+
+**Content Quality Assessment:**
+- **Creative Language**: *"Unique attack patterns detected! Creativity stat boosted!"*
+- **Clear Structure**: *"Strategic formation recognized! Organization power increased!"*
+- **Strong Connections**: *"Combo chain established! Knowledge synergy activated!"*
+- **Depth of Analysis**: *"Deep strike successful! Wisdom experience gained!"*
+
+**Vault Integration Feedback:**
+- **New Note Created**: *"New ally recruited! Deck expansion detected!"*
+- **Links Added**: *"Alliance forged! Network power amplified!"*
+- **Tags Applied**: *"Equipment categorized! Inventory management improved!"*
+- **References Made**: *"Ancient knowledge accessed! Research bonus activated!"*
+
+### AI-Driven Pack Enhancement
+**Performance-Based RNG Modification:**
+```javascript
+// Base pack has standard odds
+let packOdds = {
+  common: 0.60,
+  rare: 0.25,  
+  epic: 0.12,
+  legendary: 0.03
+}
+
+// Recent performance modifies odds
+if (recentQualityScore > 85) {
+  packOdds.legendary += 0.02 // "Your excellent writing unlocks rare possibilities!"
+}
+
+if (currentKMPStreak > 5) {
+  packOdds.shiny *= 1.5 // "Your typing rhythm resonates with shiny energy!"  
+}
+
+if (dailyStreak > 7) {
+  packOdds.epic += 0.05 // "Your dedication attracts powerful cards!"
+}
+```
+
+---
+
+## 7. Advanced Pack & Collection Mechanics 🎁
+
+### Pack Variety System
+**Keystroke-Earned Packs:**
+- **Standard Booster** (1000 keystrokes): 5 cards, standard rates
+- **Premium Pack** (2500 keystrokes): 11 cards, improved rates  
+- **Legendary Chest** (5000 keystrokes): 15 cards, guaranteed rare+
+
+**Performance-Bonus Packs:**
+- **Perfection Pack**: Triggered by error-free writing sessions
+- **Speed Demon Pack**: Unlocked by sustained high KPM
+- **Scholar's Collection**: Earned through extensive note connections
+- **Creator's Cache**: Awarded for innovative language and ideas
+
+**Special Event Packs:**
+- **Daily Streak Rewards**: Better packs for longer streaks
+- **Weekly Challenges**: Complete specific writing goals
+- **Seasonal Collections**: Holiday-themed limited editions
+- **Vault Milestones**: Celebrate note count achievements
+
+### Collection Management Interface
+**Card Gallery Features:**
+- **Search & Filter**: By rarity, theme, acquisition date, power level
+- **Deck Builder**: Construct active loadouts for enhanced writing bonuses
+- **Trading Post**: Exchange duplicates with other users (future feature)
+- **Completion Tracking**: Progress toward complete theme collections
+
+**Card Enhancement System:**
+- **Fusion**: Combine duplicate cards for power boosts
+- **Evolution**: Some cards transform after meeting conditions
+- **Awakening**: Unlock hidden abilities through extensive use
+- **Shiny Variants**: Rare versions with enhanced stats and visuals
+
+---
+
+## 8. Vault Analytics Integration 📈
+
+### Note-Based Card Generation Algorithm
+**Dynamic Card Creation:**
+```javascript
+function generateCardFromNote(noteFile) {
+  const analytics = analyzeNote(noteFile)
+  
+  return {
+    id: noteFile.name,
+    name: extractTitle(noteFile),
+    rarity: calculateRarity(analytics),
+    power: calculatePower(analytics),
+    abilities: generateAbilities(analytics),
+    shinyChance: calculateShinyRate(analytics),
+    themeMapping: mapToCurrentTheme(analytics)
+  }
+}
+
+function calculateRarity(analytics) {
+  let score = 0
+  score += analytics.backlinks * 2      // Connection importance
+  score += analytics.wordCount * 0.01   // Content depth  
+  score += analytics.references * 3     // Citation value
+  score += analytics.uniqueWords * 0.1  // Vocabulary richness
+  
+  // Convert score to rarity tier
+  if (score > 100) return "Legendary"
+  if (score > 50) return "Epic"  
+  if (score > 20) return "Rare"
+  if (score > 5) return "Common"
+  return "Basic"
+}
+```
+
+### Intelligent Pack Contents
+**Contextual Card Distribution:**
+- **Recent Notes Priority**: Newly created notes more likely to appear
+- **Connection Clustering**: Related notes often appear together in packs
+- **Topic Diversity**: Algorithm ensures variety across different subjects
+- **User Preference Learning**: Frequently accessed notes get higher pull rates
+
+**Vault-Specific Bonuses:**
+- **Large Vault Bonus**: 1000+ notes unlock rare card variants
+- **Well-Connected Bonus**: High link density improves pack quality
+- **Active Writer Bonus**: Recent activity boosts all drop rates
+- **Specialization Bonus**: Focused topics create themed pack streaks
+
+---
+
+## 9. Customization & Configuration System ⚙️
+
+### User Settings Interface
+**Core Mechanics Tuning:**
+```
+Keystroke Settings:
+├── EXP per Keystroke: [1 per 100] [1 per 500] [1 per 1000] [Custom: ___]
+├── Pack Unlock Threshold: [1000] [2500] [5000] [Formula: ___]
+└── Shiny Base Rate: [1/128] [1/256] [1/512] [1/1024] [Custom: ___]
+
+Progression Settings:
+├── Level Formula: [Linear] [Exponential] [Logarithmic] [Custom Formula: ___]
+├── Pack Size: [5 cards] [11 cards] [15 cards] [Variable: ___]
+└── Rarity Distribution: [Balanced] [Common Heavy] [Rare Focused] [Custom Weights]
+
+Theme Settings:
+├── Active Theme: [Pokemon] [Fantasy] [Space] [Academic] [Custom: ___]
+├── Visual Style: [Pixel Art] [Modern] [Minimalist] [High Detail]
+└── Animation Level: [None] [Subtle] [Standard] [Full Spectacle]
+```
+
+### Advanced Customization
+**Custom Theme Creator:**
+- **Pack Names**: Define opening containers for your theme
+- **Rarity Tiers**: Name and configure 3-7 rarity levels  
+- **Stat Categories**: Create meaningful character progression metrics
+- **Visual Assets**: Upload custom images and animations
+- **Special Mechanics**: Define theme-specific bonus systems
+
+**Formula Editor:**
+```javascript
+// Custom EXP Formula Editor
+function customEXPFormula(keystrokes, quality, streak, level) {
+  return Math.floor(
+    keystrokes * 0.01 +           // Base progression
+    quality * 0.5 +               // Quality bonus
+    Math.log(streak + 1) * 10 +   // Streak bonus  
+    level * 2                     // Level scaling
+  )
+}
+
+// Custom Pack Rate Modifier
+function packRateModifier(baseRate, performance) {
+  return baseRate * (1 + performance.qualityScore/200) * Math.min(2.0, 1 + performance.streak/30)
+}
+```
+
+---
+
+## 10. Implementation Roadmap 🗺️
+
+### Phase 1: Foundation Engine (Weeks 1-4)
+- [ ] Core keystroke tracking and EXP system
+- [ ] Basic PlayerCard note integration
+- [ ] Simple pack opening mechanics with RNG
+- [ ] Default Pokemon theme implementation
+- [ ] Essential settings interface
+
+### Phase 2: Card System (Weeks 5-7)
+- [ ] Note-to-card mapping algorithm
+- [ ] Card collection storage and display
+- [ ] Rarity calculation based on vault analytics
+- [ ] Shiny variant system
+- [ ] Basic card enhancement mechanics
+
+### Phase 3: AI Commentary (Weeks 8-9)  
+- [ ] Real-time performance analysis
+- [ ] Contextual feedback generation
+- [ ] Quality-based pack enhancement
+- [ ] Flow state detection and bonuses
+- [ ] Combat commentary voice system
+
+### Phase 4: Theme System (Weeks 10-11)
+- [ ] Universal theme framework
+- [ ] Additional built-in themes (Fantasy, Space, Academic)
+- [ ] Custom theme creation tools
+- [ ] Visual asset management system
+- [ ] Theme-specific mechanics
+
+### Phase 5: Advanced Features (Weeks 12-13)
+- [ ] Advanced pack varieties and special events
+- [ ] Collection management interface
+- [ ] Deck building and active loadout system
+- [ ] Performance-based bonus systems
+- [ ] Social features preparation (trading foundation)
+
+### Phase 6: Polish & Launch (Weeks 14-15)
+- [ ] Comprehensive testing and optimization
+- [ ] Tutorial and onboarding system
+- [ ] Documentation and community guides
+- [ ] Beta testing with power users
+- [ ] Performance optimization and final bug fixes
+
+---
+
+## 11. Technical Architecture 🔧
+
+### Core Data Structures
+```typescript
+interface PlayerCard {
+  // Identity
+  characterName: string
+  level: number
+  experience: number
+  theme: ThemeDefinition
+  
+  // Performance Metrics
+  totalKeystrokes: number
+  currentStreak: number
+  averageKMP: number
+  qualityScore: number
+  
+  // Collection Data
+  cards: CardInstance[]
+  unlockedPacks: PackType[]
+  activeDeck: CardInstance[]
+  
+  // Progression
+  customFormulas: FormulaSet
+  achievementHistory: Achievement[]
+  milestoneProgress: MilestoneTracker
+}
+
+interface CardInstance {
+  id: string
+  noteReference: string
+  rarity: RarityTier
+  isShiny: boolean
+  powerLevel: number
+  acquisitionDate: Date
+  timesUsed: number
+  enhancementLevel: number
+}
+
+interface PackOpening {
+  packType: string
+  openedAt: Date
+  performanceContext: PerformanceSnapshot
+  cardsReceived: CardInstance[]
+  rarityBonuses: BonusModifier[]
+}
+```
+
+### Performance Optimizations
+**Real-Time Calculations:**
+- Keystroke events throttled to prevent lag
+- EXP calculations cached and batch-updated
+- Card generation performed in background workers
+- UI updates use requestAnimationFrame for smooth animations
+
+**Memory Management:**
+- Card collection stored efficiently with lazy loading
+- Large pack opening animations use object pooling
+- Performance history maintains rolling windows
+- Automatic cleanup of old session data
+
+**Vault Integration:**
+- Note analysis performed incrementally during idle time
+- Card mapping cache updated only when files change
+- Relationship calculations use efficient graph algorithms
+- Large vault support with pagination and filtering
+
+---
+
+## 12. Success Metrics & KPIs 📊
+
+### Engagement Metrics
+- **Daily Active Writers**: Users opening Obsidian and typing daily
+- **Session Duration**: Average time spent in writing sessions
+- **Pack Opening Rate**: Frequency of earned reward redemption
+- **Collection Completion**: Progress toward full theme sets
+- **Feature Retention**: Users still active after 30/60/90 days
+
+### Performance Impact  
+- **Writing Productivity**: Increase in daily word counts
+- **Vault Growth**: New notes created and connections made
+- **Quality Improvement**: AI-assessed writing enhancement over time
+- **Flow State Frequency**: Sustained high-performance sessions
+
+### User Satisfaction
+- **Theme Adoption**: Distribution of theme preferences
+- **Customization Usage**: How many users modify default settings
+- **Social Sharing**: Screenshots and achievements shared in community
+- **Support Tickets**: Issues reported vs. feature requests
+- **Community Content**: User-created themes and configurations
+
+### Technical Performance
+- **Response Time**: <100ms for all keystroke events
+- **Memory Usage**: <100MB overhead for full feature set
+- **CPU Impact**: <5% during active writing sessions
+- **Battery Life**: Minimal impact on laptop battery duration
+- **Cross-Platform**: Consistent performance on all Obsidian platforms
+
+---
+
+## 13. Risk Assessment & Mitigation 🛡️
+
+### High Priority Risks
+1. **Distraction from Writing**: Game elements might interrupt flow
+   - *Mitigation*: Extensive customization, minimal visual modes, flow state detection
+
+2. **Performance Impact**: Real-time calculations could slow Obsidian
+   - *Mitigation*: Background processing, efficient algorithms, user-controlled complexity
+
+3. **Overwhelming Complexity**: Too many features might confuse users
+   - *Mitigation*: Progressive disclosure, simple defaults, guided onboarding
+
+### Medium Priority Risks  
+1. **Theme Compatibility**: Custom themes might conflict with Obsidian themes
+2. **Data Storage**: Large collections might slow vault sync
+3. **Addiction Concerns**: Gamification might become compulsive
+
+### Low Priority Risks
+1. **Cross-Platform Inconsistency**: Different behavior on mobile vs desktop
+2. **Community Expectations**: High demand for additional themes and features
+3. **Intellectual Property**: Potential issues with theme-based content
+
+---
+
+## 14. Future Vision: "The Ultimate Writing RPG" 🚀
+
+### Version 4.0+ Features
+**Multiplayer Guild System:**
+- Form writing guilds with shared goals and challenges
+- Guild vs guild competitions and collaborative projects
+- Shared card trading and pack gift exchanges
+- Leaderboards and achievement showcases
+
+**AI Dungeon Master:**
+- Dynamic quest generation based on your writing goals
+- Procedural challenges that adapt to your skill level
+- Story-driven campaigns that span weeks or months
+- Collaborative narrative building with AI assistance
+
+**Advanced Card Mechanics:**
+- Card combinations unlock special writing abilities
+- Seasonal rotations and limited-time collections
+- Card crafting system using writing achievements
+- Legendary cards that unlock exclusive features
+
+**Professional Integration:**
+- Team writing challenges for workplace productivity
+- Academic research quest lines and citation tracking
+- Publication milestone rewards and career progression
+- Integration with writing platforms and submission systems
+
+---
+
+## Conclusion: "The Heart of Every Keystroke" ❤️‍🔥
+
+The Clippy TCG Writer transforms the solitary act of writing into an epic adventure where every keystroke matters, every word fought creates power, and every session builds toward something greater. By combining the addictive progression of trading card games with the practical benefits of AI-powered writing assistance, we create a system that makes productivity not just rewarding, but genuinely fun.
+
+This isn't just a plugin—it's a complete reimagining of what writing software can be. Where traditional tools focus on features and functions, Clippy TCG Writer focuses on the human experience: the thrill of discovery, the satisfaction of progress, the joy of collection, and the power of transformation.
+
+**"You write, it fights. But the real battle is between who you are as a writer today, and who you'll become tomorrow. Every keystroke is training. Every pack is possibility. Every shiny is a reminder that magic happens when dedication meets opportunity."**
+
+*Will you accept the challenge? Your deck awaits. Your story begins now.*
+
+🎴⚔️✍️🌟
+
+---
+
+*"In the heart of every card lies the soul of every word you've ever written. Collect them all."*

@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clippy AI - Visual Effects Demo (Simplified)</title>
+    <style>
+        /* Essential styles from our massive CSS file */
+        :root {
+            --background-primary: #ffffff;
+            --background-secondary: #f8f9fa;
+            --background-modifier-border: #e1e4e8;
+            --text-normal: #24292e;
+            --text-muted: #586069;
+            --text-accent: #0366d6;
+            --interactive-accent: #6366f1;
+            --interactive-accent-hover: #5b5cf6;
+            
+            /* Theme variables */
+            --clippy-primary: var(--interactive-accent);
+            --clippy-secondary: var(--interactive-accent-hover);
+            --clippy-accent: #8b5cf6;
+            --clippy-glow: var(--clippy-primary);
+            --clippy-animation-duration: 0.3s;
+            --clippy-glow-intensity: 0.6;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--background-primary);
+            color: var(--text-normal);
+            transition: all 0.3s ease;
+        }
+
+        .theme-dark {
+            --background-primary: #1a1a1a;
+            --background-secondary: #2a2a2a;
+            --background-modifier-border: #3a3a3a;
+            --text-normal: #e1e1e1;
+            --text-muted: #999999;
+        }
+
+        .demo-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .demo-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: var(--background-secondary);
+            border-radius: 12px;
+            border: 1px solid var(--background-modifier-border);
+        }
+
+        /* Mascot Styles */
+        .clippy-mascot {
+            width: 60px;
+            height: 60px;
+            background: var(--clippy-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            transform: translateZ(0);
+            user-select: none;
+            margin: 20px auto;
+        }
+
+        .clippy-mascot:hover {
+            transform: scale(1.1) translateZ(0);
+            box-shadow: 0 0 20px var(--clippy-glow);
+        }
+
+        /* Modern Button */
+        .clippy-modern-button {
+            background: linear-gradient(135deg, var(--clippy-primary), var(--clippy-secondary));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            padding: 12px 24px;
+            margin: 8px;
+            transition: all 0.3s ease;
+            transform: translateY(0);
+        }
+
+        .clippy-modern-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--background-modifier-border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--clippy-primary), var(--clippy-secondary));
+            border-radius: 12px;
+            transition: width 0.6s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        /* Particle Container */
+        .particle-demo {
+            height: 200px;
+            background: var(--background-primary);
+            border: 2px dashed var(--background-modifier-border);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: var(--clippy-primary);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: particle-float 4s ease-out infinite;
+        }
+
+        /* Pattern Demo */
+        .pattern-demo {
+            height: 200px;
+            background: var(--background-primary);
+            border-radius: 8px;
+            position: relative;
+            overflow: hidden;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flower-of-life {
+            width: 100px;
+            height: 100px;
+            position: relative;
+        }
+
+        .flower-circle {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--clippy-primary);
+            border-radius: 50%;
+            animation: flower-pulse 4s ease-in-out infinite;
+        }
+
+        /* Audio Visualizer Demo */
+        .audio-demo {
+            height: 100px;
+            background: var(--background-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: end;
+            justify-content: center;
+            gap: 2px;
+            padding: 10px;
+            margin: 20px 0;
+        }
+
+        .audio-bar {
+            width: 6px;
+            background: var(--clippy-primary);
+            border-radius: 3px;
+            animation: audio-bounce 1s ease-in-out infinite;
+            opacity: 0.6;
+        }
+
+        /* Controls */
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--background-secondary);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--background-modifier-border);
+            z-index: 1000;
+        }
+
+        .status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        /* Animations */
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        @keyframes particle-float {
+            0% {
+                transform: translateY(0px) translateX(0px);
+                opacity: 0;
+            }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% {
+                transform: translateY(-200px) translateX(20px);
+                opacity: 0;
+            }
+        }
+
+        @keyframes flower-pulse {
+            0%, 100% {
+                opacity: 0.6;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.1);
+            }
+        }
+
+        @keyframes audio-bounce {
+            0%, 100% { height: 10px; }
+            50% { height: 40px; }
+        }
+
+        @keyframes mascot-excited {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            25% { transform: translateY(-4px) scale(1.05); }
+            75% { transform: translateY(-2px) scale(0.98); }
+        }
+
+        .mascot-excited {
+            animation: mascot-excited 0.6s ease-in-out;
+        }
+
+        /* Theme Colors */
+        .theme-research {
+            --clippy-primary: #10b981;
+            --clippy-secondary: #059669;
+            --clippy-accent: #34d399;
+        }
+
+        .theme-communication {
+            --clippy-primary: #06b6d4;
+            --clippy-secondary: #0891b2;
+            --clippy-accent: #67e8f9;
+        }
+
+        .theme-celebration {
+            --clippy-primary: #ec4899;
+            --clippy-secondary: #db2777;
+            --clippy-accent: #f9a8d4;
+        }
+
+        .theme-night {
+            --clippy-primary: #fbbf24;
+            --clippy-secondary: #f59e0b;
+            --clippy-accent: #fcd34d;
+        }
+
+        /* Interactive Elements */
+        input[type="range"] {
+            appearance: none;
+            background: var(--background-modifier-border);
+            border-radius: 10px;
+            height: 6px;
+            outline: none;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            background: var(--clippy-primary);
+            border-radius: 50%;
+            height: 20px;
+            width: 20px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            background: var(--clippy-primary);
+            border-radius: 50%;
+            height: 20px;
+            width: 20px;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Mouse Effects */
+        .mouse-spotlight {
+            position: fixed;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 9999;
+            transition: all 0.1s ease;
+        }
+
+        .raindrop {
+            position: fixed;
+            width: 2px;
+            height: 10px;
+            background: linear-gradient(180deg, transparent, var(--clippy-primary));
+            border-radius: 1px;
+            pointer-events: none;
+            z-index: 1000;
+            animation: raindrop-fall linear;
+        }
+
+        .fish {
+            position: fixed;
+            width: 20px;
+            height: 12px;
+            background: var(--clippy-primary);
+            border-radius: 50% 10px 50% 10px;
+            pointer-events: none;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        /* Chat Window */
+        .chat-window {
+            background: var(--background-secondary);
+            border: 3px solid var(--clippy-primary);
+            border-radius: 15px;
+            padding: 20px;
+            max-height: 150px;
+            overflow-y: auto;
+            margin: 20px 0;
+            transition: all 0.1s ease;
+            position: relative;
+        }
+
+        .chat-window.audio-reactive {
+            box-shadow: 0 0 20px var(--clippy-glow);
+            border-color: var(--clippy-accent);
+        }
+
+        .chat-message {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 10px;
+            background: var(--background-primary);
+        }
+
+        .chat-message.user {
+            background: var(--clippy-primary);
+            color: white;
+            margin-left: 20px;
+        }
+
+        /* Animations */
+        @keyframes raindrop-fall {
+            from { 
+                transform: translateY(-10px);
+                opacity: 1;
+            }
+            to { 
+                transform: translateY(100vh);
+                opacity: 0;
+            }
+        }
+
+        @keyframes fish-swim {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            25% { transform: translateX(10px) rotate(5deg); }
+            75% { transform: translateX(-10px) rotate(-5deg); }
+        }
+
+        /* Universal Oscillating Animations */
+        @keyframes oscillate-scale {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes oscillate-rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes oscillate-pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes oscillate-breathe {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            25% { transform: scale(1.05) rotate(2deg); }
+            50% { transform: scale(1.1) rotate(0deg); }
+            75% { transform: scale(1.05) rotate(-2deg); }
+        }
+
+        @keyframes oscillate-wave {
+            0%, 100% { transform: translateY(0px) scaleY(1); }
+            33% { transform: translateY(-3px) scaleY(1.1); }
+            66% { transform: translateY(3px) scaleY(0.9); }
+        }
+
+        @keyframes oscillate-spiral {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.05); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+
+        @keyframes oscillate-fractal {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            25% { transform: scale(1.02); opacity: 0.9; }
+            50% { transform: scale(1.05); opacity: 1; }
+            75% { transform: scale(1.03); opacity: 0.95; }
+        }
+
+        @keyframes oscillate-glow {
+            0%, 100% { box-shadow: 0 0 5px var(--clippy-primary); }
+            50% { box-shadow: 0 0 20px var(--clippy-accent), 0 0 30px var(--clippy-glow); }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🤖 Clippy AI - Visual Effects Demo</h1>
+        <p>A simplified demo of the visual enhancements (your PC can totally handle this! 😄)</p>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="clippy-modern-button" onclick="toggleTheme()">🌙 Toggle Dark</button>
+            <button class="clippy-modern-button" onclick="togglePerformance()">⚡ Performance</button>
+        </div>
+
+        <!-- Status -->
+        <div class="status" id="status">
+            <div>🎨 Demo loaded successfully!</div>
+            <div>💻 Performance: <span id="perf-status">Good</span></div>
+            <div>🎭 Theme: <span id="theme-status">Default</span></div>
+        </div>
+
+        <!-- Mascot Demo -->
+        <div class="demo-section">
+            <h3>🤖 Dynamic Mascot</h3>
+            <p>Click the mascot to see different reactions!</p>
+            <div class="clippy-mascot" id="mascot" onclick="triggerMascotReaction()">🤖</div>
+            <div>
+                <button class="clippy-modern-button" onclick="changeMascotEmotion('excited')">😄 Excited</button>
+                <button class="clippy-modern-button" onclick="changeMascotEmotion('thinking')">🤔 Thinking</button>
+                <button class="clippy-modern-button" onclick="changeMascotEmotion('working')">⚡ Working</button>
+                <button class="clippy-modern-button" onclick="changeMascotEmotion('celebrating')">🎉 Party</button>
+            </div>
+        </div>
+
+        <!-- Progress Demo -->
+        <div class="demo-section">
+            <h3>✨ Enhanced Progress Bars</h3>
+            <p>Watch the shimmer effect and smooth animations!</p>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress1" style="width: 75%;"></div>
+                </div>
+                <div style="text-align: center; font-size: 12px; color: var(--text-muted);">Research Progress: 75%</div>
+            </div>
+            <button class="clippy-modern-button" onclick="animateProgress()">🚀 Animate Progress</button>
+        </div>
+
+        <!-- Particle Demo -->
+        <div class="demo-section">
+            <h3>✨ Particle System</h3>
+            <p>Ambient particles that react to your activities!</p>
+            <div class="particle-demo" id="particleContainer">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--text-muted);">
+                    Click "Add Particles" to see the magic!
+                </div>
+            </div>
+            <button class="clippy-modern-button" onclick="addParticles()">✨ Add Particles</button>
+            <button class="clippy-modern-button" onclick="clearParticles()">🧹 Clear</button>
+        </div>
+
+        <!-- Pattern Demo -->
+        <div class="demo-section">
+            <h3>🔮 Sacred Geometry & Wave Patterns</h3>
+            <p>Mathematical patterns and wave simulations for your knowledge graph!</p>
+            <div class="pattern-demo" id="patternContainer">
+                <div class="flower-of-life" id="flowerPattern">
+                    <!-- Patterns will be generated here -->
+                </div>
+            </div>
+            <div style="margin: 15px 0;">
+                <label>Sacred Geometry:</label><br>
+                <button class="clippy-modern-button" onclick="generatePattern('flowerOfLife')">🌸 Flower of Life</button>
+                <button class="clippy-modern-button" onclick="generatePattern('sriYantra')">🕉️ Sri Yantra</button>
+                <button class="clippy-modern-button" onclick="generatePattern('vesicaPiscis')">♾️ Vesica Piscis</button>
+                <button class="clippy-modern-button" onclick="generatePattern('seedOfLife')">🌱 Seed of Life</button>
+                <button class="clippy-modern-button" onclick="generatePattern('merkaba')">⭐ Merkaba</button>
+                <button class="clippy-modern-button" onclick="generatePattern('treeOfLife')">🌳 Tree of Life</button>
+                <button class="clippy-modern-button" onclick="generatePattern('metatronsCube')">🔮 Metatron's Cube</button>
+            </div>
+            <div style="margin: 15px 0;">
+                <label>Wave Simulations:</label><br>
+                <button class="clippy-modern-button" onclick="generatePattern('standingWave')">〜 Standing Wave</button>
+                <button class="clippy-modern-button" onclick="generatePattern('rippleWaves')">💧 Ripple Waves</button>
+                <button class="clippy-modern-button" onclick="generatePattern('harmonicWave')">🎵 Harmonic Wave</button>
+                <button class="clippy-modern-button" onclick="generatePattern('waveInterference')">⚡ Wave Interference</button>
+                <button class="clippy-modern-button" onclick="generatePattern('sierpinskiCarpet')">🔲 Sierpiński Carpet</button>
+                <button class="clippy-modern-button" onclick="generatePattern('sierpinskiTriangle')">🔺 Sierpiński Triangle</button>
+                <button class="clippy-modern-button" onclick="generatePattern('archimedesSquare')">📐 Archimedes Square</button>
+            </div>
+        </div>
+
+        <!-- Audio Demo -->
+        <div class="demo-section">
+            <h3>🎵 Enhanced Audio Visualizer</h3>
+            <p>Multiple visualization modes with reactive audio!</p>
+            <div class="audio-demo" id="audioContainer">
+                <!-- Audio visualization will be generated here -->
+            </div>
+            <div style="margin: 15px 0;">
+                <button class="clippy-modern-button" onclick="startAudioDemo('frequency')">📊 Frequency Bars</button>
+                <button class="clippy-modern-button" onclick="startAudioDemo('waveform')">〜 Waveform</button>
+                <button class="clippy-modern-button" onclick="startAudioDemo('circular')">⭕ Circular</button>
+                <button class="clippy-modern-button" onclick="startAudioDemo('radial')">🎯 Radial</button>
+                <button class="clippy-modern-button" onclick="startAudioDemo('waterfall')">🌈 Waterfall</button>
+                <button class="clippy-modern-button" onclick="startAudioDemo('particles')">✨ Particles</button>
+                <button class="clippy-modern-button" onclick="stopAudioDemo()">⏹️ Stop</button>
+            </div>
+        </div>
+
+        <!-- Theme Demo -->
+        <div class="demo-section">
+            <h3>🎨 Adaptive Themes</h3>
+            <p>Colors that respond to your context and activity!</p>
+            <div>
+                <button class="clippy-modern-button" onclick="switchTheme('default')">🏠 Default</button>
+                <button class="clippy-modern-button" onclick="switchTheme('research')">🔍 Research</button>
+                <button class="clippy-modern-button" onclick="switchTheme('communication')">💬 Chat</button>
+                <button class="clippy-modern-button" onclick="switchTheme('celebration')">🎉 Party</button>
+                <button class="clippy-modern-button" onclick="switchTheme('night')">🌙 Night</button>
+            </div>
+        </div>
+
+        <!-- Interactive Controls -->
+        <div class="demo-section">
+            <h3>🎛️ Interactive Controls</h3>
+            <p>Adjust pattern parameters and enable mouse interactions!</p>
+            
+            <div style="margin: 15px 0;">
+                <label>Pattern Speed: <span id="speedValue">1</span></label><br>
+                <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1" style="width: 200px;">
+            </div>
+            
+            <div style="margin: 15px 0;">
+                <label>Pattern Size: <span id="sizeValue">1</span></label><br>
+                <input type="range" id="sizeSlider" min="0.5" max="2" step="0.1" value="1" style="width: 200px;">
+            </div>
+            
+            <div style="margin: 15px 0;">
+                <label>Pattern Complexity: <span id="complexityValue">1</span></label><br>
+                <input type="range" id="complexitySlider" min="0.5" max="2" step="0.1" value="1" style="width: 200px;">
+            </div>
+
+            <div style="margin: 15px 0;">
+                <button class="clippy-modern-button" onclick="toggleMouseEffects('rain')">☔ Rain Effect</button>
+                <button class="clippy-modern-button" onclick="toggleMouseEffects('fish')">🐟 Fish Swimming</button>
+                <button class="clippy-modern-button" onclick="toggleMouseEffects('spotlight')">🔦 Mouse Spotlight</button>
+                <button class="clippy-modern-button" onclick="toggleMouseEffects('off')">❌ Off</button>
+            </div>
+        </div>
+
+        <!-- Audio-Reactive Chat Border Demo -->
+        <div class="demo-section">
+            <h3>💬 Audio-Reactive Chat Border</h3>
+            <p>Chat window that responds to audio input!</p>
+            <div id="chatWindow" class="chat-window">
+                <div class="chat-message">🤖 Hello! I'm responding to audio input!</div>
+                <div class="chat-message user">👤 This border will pulse with your voice!</div>
+                <div class="chat-message">🎵 Try speaking or playing music!</div>
+            </div>
+            <button class="clippy-modern-button" onclick="startMicrophoneDemo()">🎤 Start Audio Reactive</button>
+            <button class="clippy-modern-button" onclick="stopMicrophoneDemo()">⏹️ Stop</button>
+        </div>
+
+        <!-- Integration Demo -->
+        <div class="demo-section">
+            <h3>🔗 Integration Workflows</h3>
+            <p>See how all components work together!</p>
+            <button class="clippy-modern-button" onclick="demoResearchFlow()">🔬 Research Flow</button>
+            <button class="clippy-modern-button" onclick="demoSuccessFlow()">🎉 Success Flow</button>
+            <button class="clippy-modern-button" onclick="demoVoiceFlow()">🎤 Voice Flow</button>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let isDarkMode = false;
+        let isHighPerf = true;
+        let currentTheme = 'default';
+        let audioInterval = null;
+        let mascotEmotions = ['🤖', '😊', '🤔', '⚡', '🎉', '👂', '💭', '🚀'];
+        let currentEmotion = 0;
+
+        // Audio system
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let dataArray = null;
+        let frequencyData = null;
+        let bufferLength = 0;
+        let isRecording = false;
+        let animationId = null;
+
+        // Mouse interaction
+        let mouseX = 0;
+        let mouseY = 0;
+        let particles = [];
+        let raindrops = [];
+        let fish = [];
+
+        // Pattern controls
+        let patternSpeed = 1;
+        let patternSize = 1;
+        let patternComplexity = 1;
+
+        // Utility functions
+        function log(message) {
+            const status = document.getElementById('status');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Create log entry with fade-out functionality
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            logEntry.style.cssText = `
+                opacity: 1;
+                transition: opacity 0.5s ease-out;
+                margin-bottom: 2px;
+            `;
+            
+            status.appendChild(logEntry);
+            status.scrollTop = status.scrollHeight;
+            
+            // Auto-fade after 5 seconds
+            setTimeout(() => {
+                logEntry.style.opacity = '0.3';
+            }, 5000);
+            
+            // Remove completely after 10 seconds to prevent memory buildup
+            setTimeout(() => {
+                if (logEntry.parentNode) {
+                    logEntry.parentNode.removeChild(logEntry);
+                }
+            }, 10000);
+            
+            // Keep only last 20 messages to prevent overflow
+            const entries = status.children;
+            if (entries.length > 20) {
+                for (let i = 0; i < entries.length - 20; i++) {
+                    if (entries[i]) {
+                        entries[i].remove();
+                    }
+                }
+            }
+        }
+
+        function updateStatus(type, value) {
+            document.getElementById(type + '-status').textContent = value;
+        }
+
+        // Real Audio Functions
+        async function startMicrophoneDemo() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                
+                analyser.fftSize = 256;
+                bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                frequencyData = new Uint8Array(bufferLength);
+                
+                microphone.connect(analyser);
+                
+                isRecording = true;
+                animateAudioReactive();
+                
+                log('🎤 Microphone connected - speak or play music!');
+            } catch (error) {
+                console.error('Microphone access denied:', error);
+                log('❌ Microphone access denied. Please allow microphone access.');
+            }
+        }
+
+        function stopMicrophoneDemo() {
+            isRecording = false;
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+            
+            if (microphone) {
+                microphone.disconnect();
+                microphone = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            // Reset chat window
+            const chatWindow = document.getElementById('chatWindow');
+            chatWindow.classList.remove('audio-reactive');
+            
+            log('🔇 Audio reactive demo stopped');
+        }
+
+        function animateAudioReactive() {
+            if (!isRecording) return;
+            
+            analyser.getByteFrequencyData(frequencyData);
+            analyser.getByteTimeDomainData(dataArray);
+            
+            // Calculate average volume
+            const avgVolume = frequencyData.reduce((a, b) => a + b, 0) / frequencyData.length;
+            const normalizedVolume = avgVolume / 255;
+            
+            // Update chat window border
+            const chatWindow = document.getElementById('chatWindow');
+            if (normalizedVolume > 0.1) {
+                chatWindow.classList.add('audio-reactive');
+                chatWindow.style.borderWidth = `${3 + normalizedVolume * 10}px`;
+                chatWindow.style.boxShadow = `0 0 ${20 + normalizedVolume * 50}px var(--clippy-glow)`;
+            } else {
+                chatWindow.classList.remove('audio-reactive');
+                chatWindow.style.borderWidth = '3px';
+                chatWindow.style.boxShadow = 'none';
+            }
+            
+            // Update any running visualizers
+            updateAudioVisualizers(frequencyData, dataArray);
+            
+            animationId = requestAnimationFrame(animateAudioReactive);
+        }
+
+        function updateAudioVisualizers(freqData, timeData) {
+            // Update frequency bars if active
+            const bars = document.querySelectorAll('.audio-bar');
+            bars.forEach((bar, index) => {
+                const dataIndex = Math.floor((index / bars.length) * freqData.length);
+                const height = (freqData[dataIndex] / 255) * 80 + 5;
+                bar.style.height = height + 'px';
+            });
+        }
+
+        // Interactive Controls
+        function setupInteractiveControls() {
+            // Speed slider
+            const speedSlider = document.getElementById('speedSlider');
+            const speedValue = document.getElementById('speedValue');
+            speedSlider.addEventListener('input', (e) => {
+                patternSpeed = parseFloat(e.target.value);
+                speedValue.textContent = patternSpeed;
+                updatePatternAnimations();
+                log(`⚡ Speed adjusted to ${patternSpeed}x`);
+            });
+
+            // Size slider
+            const sizeSlider = document.getElementById('sizeSlider');
+            const sizeValue = document.getElementById('sizeValue');
+            sizeSlider.addEventListener('input', (e) => {
+                patternSize = parseFloat(e.target.value);
+                sizeValue.textContent = patternSize;
+                updatePatternAnimations();
+                log(`📏 Size adjusted to ${patternSize}x`);
+            });
+
+            // Complexity slider
+            const complexitySlider = document.getElementById('complexitySlider');
+            const complexityValue = document.getElementById('complexityValue');
+            complexitySlider.addEventListener('input', (e) => {
+                patternComplexity = parseFloat(e.target.value);
+                complexityValue.textContent = patternComplexity;
+                updatePatternAnimations();
+                log(`🔧 Complexity adjusted to ${patternComplexity}x`);
+            });
+
+            // Mouse tracking
+            document.addEventListener('mousemove', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                updateMouseEffects();
+            });
+        }
+
+        function updatePatternAnimations() {
+            // Update CSS custom properties for animations
+            document.documentElement.style.setProperty('--pattern-speed', patternSpeed + 's');
+            document.documentElement.style.setProperty('--pattern-size', patternSize);
+            document.documentElement.style.setProperty('--pattern-complexity', patternComplexity);
+            
+            // Update existing patterns
+            const patterns = document.querySelectorAll('.flower-circle, .audio-bar');
+            patterns.forEach(element => {
+                element.style.animationDuration = (2 / patternSpeed) + 's';
+                element.style.transform = `scale(${patternSize})`;
+            });
+        }
+
+        // Mouse Effects
+        let currentMouseEffect = 'off';
+        let mouseEffectInterval = null;
+        let spotlight = null;
+
+        function toggleMouseEffects(type) {
+            // Clean up existing effects
+            cleanupMouseEffects();
+            currentMouseEffect = type;
+            
+            switch(type) {
+                case 'rain':
+                    startRainEffect();
+                    log('☔ Rain effect enabled - your mouse is an umbrella!');
+                    break;
+                case 'fish':
+                    startFishEffect();
+                    log('🐟 Fish swimming enabled - they love your cursor!');
+                    break;
+                case 'spotlight':
+                    startSpotlightEffect();
+                    log('🔦 Mouse spotlight enabled!');
+                    break;
+                default:
+                    currentMouseEffect = 'off';
+                    log('❌ Mouse effects disabled');
+            }
+        }
+
+        function cleanupMouseEffects() {
+            // Remove existing elements
+            document.querySelectorAll('.raindrop, .fish, .mouse-spotlight').forEach(el => el.remove());
+            
+            if (mouseEffectInterval) {
+                clearInterval(mouseEffectInterval);
+                mouseEffectInterval = null;
+            }
+            
+            raindrops = [];
+            fish = [];
+            spotlight = null;
+        }
+
+        function startRainEffect() {
+            mouseEffectInterval = setInterval(() => {
+                // Create raindrops
+                for (let i = 0; i < 3; i++) {
+                    if (Math.random() < 0.7) {
+                        createRaindrop();
+                    }
+                }
+                
+                // Update existing raindrops (umbrella effect)
+                updateRaindrops();
+            }, 100);
+        }
+
+        function createRaindrop() {
+            const raindrop = document.createElement('div');
+            raindrop.className = 'raindrop';
+            raindrop.style.left = Math.random() * window.innerWidth + 'px';
+            raindrop.style.top = '-10px';
+            raindrop.style.animationDuration = (2 + Math.random() * 2) + 's';
+            
+            document.body.appendChild(raindrop);
+            raindrops.push({
+                element: raindrop,
+                x: parseInt(raindrop.style.left),
+                y: -10,
+                speed: 2 + Math.random() * 3
+            });
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (raindrop.parentNode) {
+                    raindrop.parentNode.removeChild(raindrop);
+                    raindrops = raindrops.filter(drop => drop.element !== raindrop);
+                }
+            }, 4000);
+        }
+
+        function updateRaindrops() {
+            raindrops.forEach(drop => {
+                const dx = drop.x - mouseX;
+                const dy = drop.y - mouseY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                // Umbrella effect - deflect raindrops
+                if (distance < 100) {
+                    const angle = Math.atan2(dy, dx);
+                    drop.x += Math.cos(angle) * 2;
+                    drop.element.style.left = drop.x + 'px';
+                    drop.element.style.transform = 'rotate(' + (angle * 180 / Math.PI) + 'deg)';
+                }
+                
+                drop.y += drop.speed;
+                drop.element.style.top = drop.y + 'px';
+            });
+        }
+
+        function startFishEffect() {
+            // Create fish
+            for (let i = 0; i < 8; i++) {
+                createFish();
+            }
+            
+            mouseEffectInterval = setInterval(updateFish, 50);
+        }
+
+        function createFish() {
+            const fishEl = document.createElement('div');
+            fishEl.className = 'fish';
+            fishEl.style.left = Math.random() * window.innerWidth + 'px';
+            fishEl.style.top = Math.random() * window.innerHeight + 'px';
+            
+            document.body.appendChild(fishEl);
+            
+            fish.push({
+                element: fishEl,
+                x: parseInt(fishEl.style.left),
+                y: parseInt(fishEl.style.top),
+                vx: (Math.random() - 0.5) * 2,
+                vy: (Math.random() - 0.5) * 2
+            });
+        }
+
+        function updateFish() {
+            fish.forEach(fishObj => {
+                // Attraction to mouse
+                const dx = mouseX - fishObj.x;
+                const dy = mouseY - fishObj.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    fishObj.vx += (dx / distance) * 0.1;
+                    fishObj.vy += (dy / distance) * 0.1;
+                }
+                
+                // Apply velocity with damping
+                fishObj.vx *= 0.95;
+                fishObj.vy *= 0.95;
+                
+                fishObj.x += fishObj.vx;
+                fishObj.y += fishObj.vy;
+                
+                // Bounds checking
+                if (fishObj.x < 0) fishObj.x = window.innerWidth;
+                if (fishObj.x > window.innerWidth) fishObj.x = 0;
+                if (fishObj.y < 0) fishObj.y = window.innerHeight;
+                if (fishObj.y > window.innerHeight) fishObj.y = 0;
+                
+                // Update position and rotation
+                const angle = Math.atan2(fishObj.vy, fishObj.vx);
+                fishObj.element.style.left = fishObj.x + 'px';
+                fishObj.element.style.top = fishObj.y + 'px';
+                fishObj.element.style.transform = `rotate(${angle}rad)`;
+            });
+        }
+
+        function startSpotlightEffect() {
+            spotlight = document.createElement('div');
+            spotlight.className = 'mouse-spotlight';
+            document.body.appendChild(spotlight);
+            updateMouseEffects();
+        }
+
+        function updateMouseEffects() {
+            if (currentMouseEffect === 'spotlight' && spotlight) {
+                spotlight.style.left = (mouseX - 100) + 'px';
+                spotlight.style.top = (mouseY - 100) + 'px';
+            }
+        }
+
+        // Theme functions
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('theme-dark', isDarkMode);
+            updateStatus('theme', isDarkMode ? 'Dark' : 'Light');
+            log(`🎨 Switched to ${isDarkMode ? 'dark' : 'light'} mode`);
+        }
+
+        function togglePerformance() {
+            isHighPerf = !isHighPerf;
+            updateStatus('perf', isHighPerf ? 'High' : 'Low');
+            log(`⚡ Performance mode: ${isHighPerf ? 'HIGH' : 'LOW'}`);
+        }
+
+        function switchTheme(theme) {
+            // Remove existing theme classes
+            document.body.classList.remove('theme-research', 'theme-communication', 'theme-celebration', 'theme-night');
+            
+            if (theme !== 'default') {
+                document.body.classList.add(`theme-${theme}`);
+            }
+            
+            currentTheme = theme;
+            updateStatus('theme', theme.charAt(0).toUpperCase() + theme.slice(1));
+            log(`🎨 Switched to ${theme} theme`);
+        }
+
+        // Mascot functions
+        function triggerMascotReaction() {
+            const mascot = document.getElementById('mascot');
+            mascot.classList.add('mascot-excited');
+            setTimeout(() => mascot.classList.remove('mascot-excited'), 600);
+            
+            // Cycle through emotions
+            currentEmotion = (currentEmotion + 1) % mascotEmotions.length;
+            mascot.textContent = mascotEmotions[currentEmotion];
+            
+            log(`🤖 Mascot reacted: ${mascotEmotions[currentEmotion]}`);
+        }
+
+        function changeMascotEmotion(emotion) {
+            const mascot = document.getElementById('mascot');
+            const emotions = {
+                'excited': '🚀',
+                'thinking': '🤔', 
+                'working': '⚡',
+                'celebrating': '🎉'
+            };
+            
+            mascot.textContent = emotions[emotion] || '🤖';
+            mascot.classList.add('mascot-excited');
+            setTimeout(() => mascot.classList.remove('mascot-excited'), 600);
+            
+            log(`🤖 Mascot emotion: ${emotion}`);
+        }
+
+        // Progress functions
+        function animateProgress() {
+            const progress = document.getElementById('progress1');
+            const targetWidth = Math.random() * 100;
+            
+            progress.style.width = '0%';
+            setTimeout(() => {
+                progress.style.width = targetWidth + '%';
+            }, 100);
+            
+            log(`📊 Progress animated to ${Math.round(targetWidth)}%`);
+        }
+
+        // Particle functions
+        function addParticles() {
+            const container = document.getElementById('particleContainer');
+            const numParticles = isHighPerf ? 15 : 5;
+            
+            for (let i = 0; i < numParticles; i++) {
+                setTimeout(() => {
+                    const particle = document.createElement('div');
+                    particle.className = 'particle';
+                    particle.style.left = Math.random() * 100 + '%';
+                    particle.style.animationDelay = Math.random() * 2 + 's';
+                    particle.style.animationDuration = (3 + Math.random() * 2) + 's';
+                    
+                    container.appendChild(particle);
+                    
+                    // Remove particle after animation
+                    setTimeout(() => {
+                        if (particle.parentNode) {
+                            particle.parentNode.removeChild(particle);
+                        }
+                    }, 5000);
+                }, i * 200);
+            }
+            
+            log(`✨ Added ${numParticles} particles`);
+        }
+
+        function clearParticles() {
+            const container = document.getElementById('particleContainer');
+            const particles = container.querySelectorAll('.particle');
+            particles.forEach(p => p.remove());
+            log('🧹 Particles cleared');
+        }
+
+        // Pattern functions
+        function generatePattern(type = 'flowerOfLife') {
+            const container = document.getElementById('flowerPattern');
+            container.innerHTML = '';
+            
+            switch(type) {
+                case 'flowerOfLife':
+                    generateFlowerOfLife(container);
+                    break;
+                case 'sriYantra':
+                    generateSriYantra(container);
+                    break;
+                case 'vesicaPiscis':
+                    generateVesicaPiscis(container);
+                    break;
+                case 'seedOfLife':
+                    generateSeedOfLife(container);
+                    break;
+                case 'merkaba':
+                    generateMerkaba(container);
+                    break;
+                case 'treeOfLife':
+                    generateTreeOfLife(container);
+                    break;
+                case 'metatronsCube':
+                    generateMetatronsCube(container);
+                    break;
+                case 'standingWave':
+                    generateStandingWave(container);
+                    break;
+                case 'rippleWaves':
+                    generateRippleWaves(container);
+                    break;
+                case 'harmonicWave':
+                    generateHarmonicWave(container);
+                    break;
+                case 'waveInterference':
+                    generateWaveInterference(container);
+                    break;
+                case 'sierpinskiCarpet':
+                    generateSierpinskiCarpet(container);
+                    break;
+                case 'sierpinskiTriangle':
+                    generateSierpinskiTriangle(container);
+                    break;
+                case 'archimedesSquare':
+                    generateArchimedesSquare(container);
+                    break;
+                default:
+                    generateFlowerOfLife(container);
+            }
+            
+            log(`🔮 Generated ${type} pattern`);
+        }
+
+        function generateFlowerOfLife(container) {
+            const positions = [
+                {x: 30, y: 30}, // center
+                {x: 10, y: 20}, {x: 50, y: 20}, // top row
+                {x: 10, y: 40}, {x: 50, y: 40}, // bottom row
+                {x: 30, y: 10}, {x: 30, y: 50}  // middle column
+            ];
+            
+            positions.forEach((pos, index) => {
+                setTimeout(() => {
+                    const circle = document.createElement('div');
+                    circle.className = 'flower-circle';
+                    circle.style.left = pos.x + 'px';
+                    circle.style.top = pos.y + 'px';
+                    circle.style.animationDelay = index * 0.2 + 's';
+                    
+                    // Add oscillating animation
+                    const oscillationType = ['oscillate-breathe', 'oscillate-pulse', 'oscillate-glow'][index % 3];
+                    circle.style.animation += `, ${oscillationType} ${3 / patternSpeed}s ease-in-out infinite`;
+                    circle.style.animationDelay = `${index * 0.2}s, ${index * 0.3}s`;
+                    
+                    container.appendChild(circle);
+                }, index * 100);
+            });
+        }
+
+        function generateSriYantra(container) {
+            const yantraDiv = document.createElement('div');
+            yantraDiv.style.cssText = 'position: relative; width: 100px; height: 100px;';
+            yantraDiv.innerHTML = `
+                <div style="position: absolute; width: 80px; height: 80px; border: 2px solid var(--clippy-primary); left: 10px; top: 10px; animation: oscillate-breathe ${4 / patternSpeed}s ease-in-out infinite;"></div>
+                <div style="position: absolute; width: 60px; height: 60px; border: 2px solid var(--clippy-secondary); border-radius: 50%; left: 20px; top: 20px; animation: oscillate-pulse ${3 / patternSpeed}s ease-in-out infinite;"></div>
+                <div style="position: absolute; width: 40px; height: 40px; left: 30px; top: 30px; border-left: 2px solid var(--clippy-accent); border-right: 2px solid var(--clippy-accent); transform: rotate(30deg); animation: oscillate-spiral ${6 / patternSpeed}s linear infinite;"></div>
+                <div style="position: absolute; width: 40px; height: 40px; left: 30px; top: 30px; border-left: 2px solid var(--clippy-accent); border-right: 2px solid var(--clippy-accent); transform: rotate(-30deg); animation: oscillate-spiral ${6 / patternSpeed}s linear infinite reverse;"></div>
+                <div style="position: absolute; width: 4px; height: 4px; background: var(--clippy-primary); border-radius: 50%; left: 48px; top: 48px; animation: oscillate-glow ${2 / patternSpeed}s ease-in-out infinite;"></div>
+            `;
+            container.appendChild(yantraDiv);
+        }
+
+        function generateVesicaPiscis(container) {
+            container.innerHTML = `
+                <div style="position: relative; width: 100px; height: 100px;">
+                    <div style="position: absolute; width: 50px; height: 50px; border: 2px solid var(--clippy-primary); border-radius: 50%; left: 15px; top: 25px; opacity: 0.7;"></div>
+                    <div style="position: absolute; width: 50px; height: 50px; border: 2px solid var(--clippy-secondary); border-radius: 50%; left: 35px; top: 25px; opacity: 0.7;"></div>
+                    <div style="position: absolute; width: 20px; height: 40px; background: var(--clippy-accent); left: 40px; top: 30px; opacity: 0.3; clip-path: ellipse(50% 70% at 50% 50%);"></div>
+                </div>
+            `;
+        }
+
+        function generateSeedOfLife(container) {
+            const positions = [
+                {x: 40, y: 40}, // center
+                {x: 25, y: 30}, {x: 55, y: 30}, // top row
+                {x: 25, y: 50}, {x: 55, y: 50}, // bottom row
+                {x: 40, y: 20}, {x: 40, y: 60}  // middle column
+            ];
+            
+            positions.forEach((pos, index) => {
+                setTimeout(() => {
+                    const circle = document.createElement('div');
+                    circle.className = 'flower-circle';
+                    circle.style.left = pos.x + 'px';
+                    circle.style.top = pos.y + 'px';
+                    circle.style.width = '20px';
+                    circle.style.height = '20px';
+                    circle.style.animationDelay = index * 0.2 + 's';
+                    container.appendChild(circle);
+                }, index * 100);
+            });
+        }
+
+        function generateMerkaba(container) {
+            container.innerHTML = `
+                <div style="position: relative; width: 100px; height: 100px;">
+                    <div style="position: absolute; width: 60px; height: 60px; left: 20px; top: 20px; border: 2px solid var(--clippy-primary); transform: rotate(0deg); clip-path: polygon(50% 0%, 0% 100%, 100% 100%);"></div>
+                    <div style="position: absolute; width: 60px; height: 60px; left: 20px; top: 20px; border: 2px solid var(--clippy-secondary); transform: rotate(180deg); clip-path: polygon(50% 0%, 0% 100%, 100% 100%);"></div>
+                    <div style="position: absolute; width: 30px; height: 30px; left: 35px; top: 35px; border: 2px solid var(--clippy-accent); transform: rotate(30deg);"></div>
+                </div>
+            `;
+        }
+
+        function generateTreeOfLife(container) {
+            container.innerHTML = `
+                <div style="position: relative; width: 100px; height: 100px;">
+                    <div class="flower-circle" style="left: 45px; top: 5px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 30px; top: 20px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 60px; top: 20px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 45px; top: 35px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 20px; top: 50px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 70px; top: 50px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 45px; top: 65px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 45px; top: 85px; width: 10px; height: 10px;"></div>
+                    <!-- Connection lines -->
+                    <div style="position: absolute; width: 1px; height: 30px; background: var(--clippy-primary); left: 50px; top: 15px; transform: rotate(45deg);"></div>
+                    <div style="position: absolute; width: 1px; height: 30px; background: var(--clippy-primary); left: 50px; top: 15px; transform: rotate(-45deg);"></div>
+                </div>
+            `;
+        }
+
+        function generateMetatronsCube(container) {
+            container.innerHTML = `
+                <div style="position: relative; width: 100px; height: 100px;">
+                    <div class="flower-circle" style="left: 45px; top: 45px; width: 10px; height: 10px;"></div>
+                    <div class="flower-circle" style="left: 25px; top: 25px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 65px; top: 25px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 25px; top: 65px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 65px; top: 65px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 45px; top: 15px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 45px; top: 75px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 15px; top: 45px; width: 8px; height: 8px;"></div>
+                    <div class="flower-circle" style="left: 75px; top: 45px; width: 8px; height: 8px;"></div>
+                </div>
+            `;
+        }
+
+        function generateStandingWave(container) {
+            // Create multiple wave layers for richer effect
+            for (let i = 0; i < 3; i++) {
+                const wave = document.createElement('div');
+                wave.style.cssText = `
+                    width: 100%;
+                    height: ${2 + i}px;
+                    background: linear-gradient(90deg, transparent, var(--clippy-primary), var(--clippy-secondary), var(--clippy-primary), transparent);
+                    position: absolute;
+                    top: ${50 + i * 10}%;
+                    opacity: ${0.8 - i * 0.2};
+                    animation: wave-oscillate ${(2 - i * 0.3) / patternSpeed}s ease-in-out infinite, oscillate-wave ${4 / patternSpeed}s ease-in-out infinite;
+                    animation-delay: ${i * 0.2}s, ${i * 0.1}s;
+                `;
+                container.appendChild(wave);
+            }
+            
+            // Add keyframe animation
+            if (!document.getElementById('wave-styles')) {
+                const style = document.createElement('style');
+                style.id = 'wave-styles';
+                style.textContent = `
+                    @keyframes wave-oscillate {
+                        0%, 100% { transform: scaleY(1) translateY(-50%); }
+                        25% { transform: scaleY(2) translateY(-50%) skewX(2deg); }
+                        50% { transform: scaleY(4) translateY(-50%); }
+                        75% { transform: scaleY(2) translateY(-50%) skewX(-2deg); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateRippleWaves(container) {
+            const rippleCount = Math.floor(patternComplexity * 8); // 4-16 ripples
+            
+            for (let i = 1; i <= rippleCount; i++) {
+                setTimeout(() => {
+                    const ripple = document.createElement('div');
+                    ripple.style.cssText = `
+                        position: absolute;
+                        left: 50%;
+                        top: 50%;
+                        width: ${i * 15}px;
+                        height: ${i * 15}px;
+                        border: 2px solid var(--clippy-primary);
+                        border-radius: 50%;
+                        transform: translate(-50%, -50%);
+                        opacity: ${1 - i * 0.1};
+                        animation: ripple-expand ${3 / patternSpeed}s ease-out infinite, oscillate-breathe ${5 / patternSpeed}s ease-in-out infinite;
+                        animation-delay: ${i * 0.2}s, ${i * 0.15}s;
+                    `;
+                    container.appendChild(ripple);
+                }, i * 150);
+            }
+            
+            if (!document.getElementById('ripple-styles')) {
+                const style = document.createElement('style');
+                style.id = 'ripple-styles';
+                style.textContent = `
+                    @keyframes ripple-expand {
+                        0% { 
+                            transform: translate(-50%, -50%) scale(0.3); 
+                            opacity: 1; 
+                            border-width: 3px;
+                        }
+                        50% {
+                            transform: translate(-50%, -50%) scale(1.5);
+                            opacity: 0.7;
+                            border-width: 2px;
+                        }
+                        100% { 
+                            transform: translate(-50%, -50%) scale(2.5); 
+                            opacity: 0;
+                            border-width: 1px;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateHarmonicWave(container) {
+            const canvas = document.createElement('div');
+            canvas.style.cssText = `
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(90deg, 
+                    transparent,
+                    var(--clippy-primary) 20%,
+                    var(--clippy-secondary) 40%,
+                    var(--clippy-accent) 60%,
+                    var(--clippy-primary) 80%,
+                    transparent);
+                opacity: 0.6;
+                animation: harmonic-flow 3s ease-in-out infinite;
+            `;
+            container.appendChild(canvas);
+            
+            if (!document.getElementById('harmonic-styles')) {
+                const style = document.createElement('style');
+                style.id = 'harmonic-styles';
+                style.textContent = `
+                    @keyframes harmonic-flow {
+                        0%, 100% { transform: scaleY(0.5) scaleX(1); }
+                        33% { transform: scaleY(1.5) scaleX(0.8); }
+                        66% { transform: scaleY(0.8) scaleX(1.2); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateWaveInterference(container) {
+            // Create multiple wave sources
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const dot = document.createElement('div');
+                    dot.style.cssText = `
+                        position: absolute;
+                        left: ${20 + i * 30}%;
+                        top: ${20 + j * 30}%;
+                        width: 4px;
+                        height: 4px;
+                        background: var(--clippy-primary);
+                        border-radius: 50%;
+                        animation: interference-pulse 2s ease-in-out infinite;
+                        animation-delay: ${(i + j) * 0.2}s;
+                    `;
+                    container.appendChild(dot);
+                }
+            }
+            
+            if (!document.getElementById('interference-styles')) {
+                const style = document.createElement('style');
+                style.id = 'interference-styles';
+                style.textContent = `
+                    @keyframes interference-pulse {
+                        0%, 100% { 
+                            transform: scale(1);
+                            box-shadow: 0 0 0 0 var(--clippy-primary);
+                        }
+                        50% { 
+                            transform: scale(1.5);
+                            box-shadow: 0 0 0 10px transparent;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateSierpinskiCarpet(container) {
+            container.innerHTML = '';
+            
+            // Create the main carpet container
+            const carpetContainer = document.createElement('div');
+            carpetContainer.style.cssText = `
+                position: relative;
+                width: 180px;
+                height: 180px;
+                margin: 0 auto;
+                background: var(--clippy-primary);
+                opacity: 0.8;
+            `;
+            
+            // Generate Sierpiński carpet recursively
+            const maxDepth = Math.floor(patternComplexity * 4); // 2-8 levels based on complexity
+            generateSierpinskiLevel(carpetContainer, 0, 0, 180, maxDepth, 0);
+            
+            container.appendChild(carpetContainer);
+            
+            if (!document.getElementById('sierpinski-styles')) {
+                const style = document.createElement('style');
+                style.id = 'sierpinski-styles';
+                style.textContent = `
+                    .sierpinski-square {
+                        position: absolute;
+                        background: var(--background-primary);
+                        animation: sierpinski-appear 0.5s ease-out forwards;
+                        opacity: 0;
+                        transform: scale(0);
+                    }
+                    
+                    @keyframes sierpinski-appear {
+                        to {
+                            opacity: 1;
+                            transform: scale(1);
+                        }
+                    }
+                    
+                    @keyframes sierpinski-pulse {
+                        0%, 100% { opacity: 0.8; }
+                        50% { opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateSierpinskiLevel(parent, x, y, size, depth, delay) {
+            if (depth <= 0 || size < 2) return;
+            
+            const third = size / 3;
+            
+            // Create center square (the "hole" in Sierpiński carpet)
+            setTimeout(() => {
+                const centerSquare = document.createElement('div');
+                centerSquare.className = 'sierpinski-square';
+                centerSquare.style.cssText = `
+                    left: ${x + third}px;
+                    top: ${y + third}px;
+                    width: ${third}px;
+                    height: ${third}px;
+                    animation-delay: ${delay * 0.1}s;
+                `;
+                
+                // Add pulsing animation based on pattern speed
+                if (patternSpeed > 1.5) {
+                    centerSquare.style.animation += `, sierpinski-pulse ${2 / patternSpeed}s ease-in-out infinite`;
+                }
+                
+                parent.appendChild(centerSquare);
+            }, delay * 50);
+            
+            // Recursively generate the 8 surrounding squares
+            const positions = [
+                [x, y], [x + third, y], [x + 2*third, y],           // Top row
+                [x, y + third], /* center hole */ [x + 2*third, y + third],  // Middle row
+                [x, y + 2*third], [x + third, y + 2*third], [x + 2*third, y + 2*third]  // Bottom row
+            ];
+            
+            positions.forEach((pos, index) => {
+                if (index !== 4) { // Skip center position (that's the hole)
+                    generateSierpinskiLevel(parent, pos[0], pos[1], third, depth - 1, delay + index + 1);
+                }
+            });
+        }
+
+        function generateSierpinskiTriangle(container) {
+            container.innerHTML = '';
+            
+            // Create SVG for precise triangle drawing
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.style.cssText = `
+                width: 200px;
+                height: 200px;
+                margin: 0 auto;
+                display: block;
+            `;
+            svg.setAttribute('viewBox', '0 0 200 200');
+            
+            // Main triangle vertices (equilateral)
+            const size = 160 * patternSize;
+            const height = size * Math.sqrt(3) / 2;
+            const centerX = 100;
+            const centerY = 100;
+            
+            const vertices = [
+                { x: centerX, y: centerY - height / 2 },           // Top vertex
+                { x: centerX - size / 2, y: centerY + height / 2 }, // Bottom left
+                { x: centerX + size / 2, y: centerY + height / 2 }  // Bottom right
+            ];
+            
+            // Generate Sierpiński triangle recursively
+            const maxDepth = Math.floor(patternComplexity * 6); // 3-12 levels
+            generateTriangleLevel(svg, vertices, maxDepth, 0);
+            
+            container.appendChild(svg);
+            
+            if (!document.getElementById('sierpinski-triangle-styles')) {
+                const style = document.createElement('style');
+                style.id = 'sierpinski-triangle-styles';
+                style.textContent = `
+                    .sierpinski-triangle {
+                        fill: none;
+                        stroke: var(--clippy-primary);
+                        stroke-width: 1;
+                        opacity: 0;
+                        animation: triangle-appear 0.6s ease-out forwards, oscillate-fractal ${4 / patternSpeed}s ease-in-out infinite;
+                    }
+                    
+                    .sierpinski-triangle-filled {
+                        fill: var(--clippy-secondary);
+                        opacity: 0.3;
+                        animation: triangle-appear 0.8s ease-out forwards, oscillate-breathe ${5 / patternSpeed}s ease-in-out infinite;
+                    }
+                    
+                    @keyframes triangle-appear {
+                        from {
+                            opacity: 0;
+                            transform: scale(0) rotate(120deg);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: scale(1) rotate(0deg);
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function generateTriangleLevel(parent, vertices, depth, delay) {
+            if (depth <= 0) return;
+            
+            const [a, b, c] = vertices;
+            
+            // Create the triangle outline
+            setTimeout(() => {
+                const triangle = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                const points = `${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`;
+                triangle.setAttribute('points', points);
+                triangle.setAttribute('class', depth === 1 ? 'sierpinski-triangle-filled' : 'sierpinski-triangle');
+                triangle.style.animationDelay = `${delay * 0.1}s, ${delay * 0.05}s`;
+                
+                parent.appendChild(triangle);
+            }, delay * 100);
+            
+            if (depth > 1) {
+                // Calculate midpoints
+                const mid1 = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+                const mid2 = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+                const mid3 = { x: (c.x + a.x) / 2, y: (c.y + a.y) / 2 };
+                
+                // Recursively create three smaller triangles
+                generateTriangleLevel(parent, [a, mid1, mid3], depth - 1, delay + 1);
+                generateTriangleLevel(parent, [mid1, b, mid2], depth - 1, delay + 2);
+                generateTriangleLevel(parent, [mid3, mid2, c], depth - 1, delay + 3);
+            }
+        }
+
+        function generateArchimedesSquare(container) {
+            container.innerHTML = '';
+            
+            // Create SVG for precise geometric drawing
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.style.cssText = `
+                width: 200px;
+                height: 200px;
+                margin: 0 auto;
+                display: block;
+            `;
+            svg.setAttribute('viewBox', '0 0 200 200');
+            
+            const centerX = 100;
+            const centerY = 100;
+            
+            // Archimedean spiral parameters
+            const a = 2; // Gap between spiral arms
+            const turns = patternComplexity * 3; // Number of turns (3-6 based on complexity)
+            const maxTheta = turns * 2 * Math.PI;
+            const resolution = 200;
+            
+            // Generate spiral path
+            let pathData = '';
+            const points = [];
+            
+            for (let i = 0; i <= resolution; i++) {
+                const theta = (i / resolution) * maxTheta;
+                const r = a * theta;
+                const x = centerX + r * Math.cos(theta) * patternSize;
+                const y = centerY + r * Math.sin(theta) * patternSize;
+                
+                points.push({ x, y, theta, r });
+                
+                if (i === 0) {
+                    pathData += `M ${x} ${y}`;
+                } else {
+                    pathData += ` L ${x} ${y}`;
+                }
+            }
+            
+            // Create the main spiral path
+            const spiralPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            spiralPath.setAttribute('d', pathData);
+            spiralPath.setAttribute('stroke', 'var(--clippy-primary)');
+            spiralPath.setAttribute('stroke-width', '2');
+            spiralPath.setAttribute('fill', 'none');
+            spiralPath.setAttribute('class', 'archimedes-spiral');
+            
+            // Add squares along the spiral
+            const squareCount = Math.floor(patternComplexity * 20); // 10-40 squares
+            for (let i = 0; i < squareCount; i++) {
+                const pointIndex = Math.floor((i / squareCount) * points.length);
+                const point = points[pointIndex];
+                
+                if (point) {
+                    const square = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    const squareSize = 3 + (point.r * 0.05); // Size grows with radius
+                    
+                    square.setAttribute('x', point.x - squareSize/2);
+                    square.setAttribute('y', point.y - squareSize/2);
+                    square.setAttribute('width', squareSize);
+                    square.setAttribute('height', squareSize);
+                    square.setAttribute('fill', 'var(--clippy-secondary)');
+                    square.setAttribute('stroke', 'var(--clippy-accent)');
+                    square.setAttribute('stroke-width', '0.5');
+                    square.setAttribute('class', 'archimedes-square');
+                    
+                    // Rotate square based on spiral angle
+                    square.setAttribute('transform', `rotate(${point.theta * 180 / Math.PI} ${point.x} ${point.y})`);
+                    
+                    // Animate appearance with delay
+                    square.style.opacity = '0';
+                    square.style.animation = `archimedes-appear 0.8s ease-out ${i * 0.05}s forwards`;
+                    
+                    svg.appendChild(square);
+                }
+            }
+            
+            svg.appendChild(spiralPath);
+            container.appendChild(svg);
+            
+            if (!document.getElementById('archimedes-styles')) {
+                const style = document.createElement('style');
+                style.id = 'archimedes-styles';
+                style.textContent = `
+                    .archimedes-spiral {
+                        stroke-dasharray: 1000;
+                        stroke-dashoffset: 1000;
+                        animation: archimedes-draw ${3 / patternSpeed}s ease-out forwards;
+                    }
+                    
+                    @keyframes archimedes-draw {
+                        to {
+                            stroke-dashoffset: 0;
+                        }
+                    }
+                    
+                    @keyframes archimedes-appear {
+                        from {
+                            opacity: 0;
+                            transform: scale(0) rotate(0deg);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: scale(1) rotate(var(--rotation, 0deg));
+                        }
+                    }
+                    
+                    @keyframes archimedes-rotate {
+                        from { transform: rotate(0deg); }
+                        to { transform: rotate(360deg); }
+                    }
+                    
+                    .archimedes-square {
+                        animation: archimedes-appear 0.8s ease-out forwards;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            // Add continuous rotation if speed is high
+            if (patternSpeed > 2) {
+                svg.style.animation = `archimedes-rotate ${10 / patternSpeed}s linear infinite`;
+            }
+        }
+
+        // Enhanced Audio functions with real audio
+        async function startAudioDemo(type = 'frequency') {
+            if (audioInterval) return;
+            
+            const container = document.getElementById('audioContainer');
+            container.innerHTML = '';
+            
+            // If microphone is not already active, start it
+            if (!isRecording) {
+                try {
+                    await startMicrophoneDemo();
+                } catch (error) {
+                    // Fall back to simulated audio if no microphone
+                    log('🔇 No microphone access, using simulated audio');
+                    startSimulatedAudio(type, container);
+                    return;
+                }
+            }
+            
+            switch(type) {
+                case 'frequency':
+                    createFrequencyBars(container);
+                    break;
+                case 'waveform':
+                    createWaveform(container);
+                    break;
+                case 'circular':
+                    createCircularVisualizer(container);
+                    break;
+                case 'radial':
+                    createRadialVisualizer(container);
+                    break;
+                case 'waterfall':
+                    createWaterfall(container);
+                    break;
+                case 'particles':
+                    createParticleVisualizer(container);
+                    break;
+                default:
+                    createFrequencyBars(container);
+            }
+            
+            log(`🎵 Real-time audio visualizer started: ${type}`);
+        }
+
+        function startSimulatedAudio(type, container) {
+            // Fallback simulated audio for when microphone isn't available
+            switch(type) {
+                case 'frequency':
+                    createFrequencyBars(container);
+                    break;
+                case 'waveform':
+                    createWaveform(container);
+                    break;
+                case 'circular':
+                    createCircularVisualizer(container);
+                    break;
+                case 'radial':
+                    createRadialVisualizer(container);
+                    break;
+                case 'waterfall':
+                    createWaterfall(container);
+                    break;
+                case 'particles':
+                    createParticleVisualizer(container);
+                    break;
+                default:
+                    createFrequencyBars(container);
+            }
+            
+            log(`🎵 Simulated audio visualizer started: ${type}`);
+        }
+
+        function createFrequencyBars(container) {
+            // Create audio bars
+            for (let i = 0; i < 20; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'audio-bar';
+                bar.style.animationDelay = i * 0.1 + 's';
+                bar.style.animationDuration = (0.5 + Math.random()) + 's';
+                container.appendChild(bar);
+            }
+            
+            // Animate bars randomly
+            audioInterval = setInterval(() => {
+                const bars = container.querySelectorAll('.audio-bar');
+                bars.forEach(bar => {
+                    bar.style.height = Math.random() * 60 + 10 + 'px';
+                });
+            }, 200);
+        }
+
+        function createWaveform(container) {
+            const canvas = document.createElement('div');
+            canvas.style.cssText = `
+                width: 100%;
+                height: 100%;
+                background: var(--clippy-primary);
+                clip-path: polygon(
+                    0% 50%,
+                    10% ${30 + Math.random() * 40}%,
+                    20% ${30 + Math.random() * 40}%,
+                    30% ${30 + Math.random() * 40}%,
+                    40% ${30 + Math.random() * 40}%,
+                    50% ${30 + Math.random() * 40}%,
+                    60% ${30 + Math.random() * 40}%,
+                    70% ${30 + Math.random() * 40}%,
+                    80% ${30 + Math.random() * 40}%,
+                    90% ${30 + Math.random() * 40}%,
+                    100% 50%,
+                    100% 100%,
+                    0% 100%
+                );
+                animation: waveform-animate 2s ease-in-out infinite;
+            `;
+            container.appendChild(canvas);
+            
+            if (!document.getElementById('waveform-styles')) {
+                const style = document.createElement('style');
+                style.id = 'waveform-styles';
+                style.textContent = `
+                    @keyframes waveform-animate {
+                        0%, 100% { opacity: 0.6; }
+                        50% { opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            audioInterval = setInterval(() => {
+                canvas.style.clipPath = `polygon(
+                    0% 50%,
+                    10% ${30 + Math.random() * 40}%,
+                    20% ${30 + Math.random() * 40}%,
+                    30% ${30 + Math.random() * 40}%,
+                    40% ${30 + Math.random() * 40}%,
+                    50% ${30 + Math.random() * 40}%,
+                    60% ${30 + Math.random() * 40}%,
+                    70% ${30 + Math.random() * 40}%,
+                    80% ${30 + Math.random() * 40}%,
+                    90% ${30 + Math.random() * 40}%,
+                    100% 50%,
+                    100% 100%,
+                    0% 100%
+                )`;
+            }, 100);
+        }
+
+        function createCircularVisualizer(container) {
+            container.style.position = 'relative';
+            
+            for (let i = 0; i < 16; i++) {
+                const bar = document.createElement('div');
+                const angle = (i / 16) * 360;
+                bar.style.cssText = `
+                    position: absolute;
+                    width: 3px;
+                    height: 20px;
+                    background: var(--clippy-primary);
+                    left: 50%;
+                    top: 50%;
+                    transform-origin: bottom center;
+                    transform: translate(-50%, -100%) rotate(${angle}deg);
+                    animation: circular-bounce 1s ease-in-out infinite;
+                    animation-delay: ${i * 0.1}s;
+                `;
+                container.appendChild(bar);
+            }
+            
+            if (!document.getElementById('circular-styles')) {
+                const style = document.createElement('style');
+                style.id = 'circular-styles';
+                style.textContent = `
+                    @keyframes circular-bounce {
+                        0%, 100% { transform: translate(-50%, -100%) rotate(var(--rotation, 0deg)) scaleY(1); }
+                        50% { transform: translate(-50%, -100%) rotate(var(--rotation, 0deg)) scaleY(2); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function createRadialVisualizer(container) {
+            const circle = document.createElement('div');
+            circle.style.cssText = `
+                width: 60px;
+                height: 60px;
+                border: 3px solid var(--clippy-primary);
+                border-radius: 50%;
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                animation: radial-pulse 2s ease-in-out infinite;
+            `;
+            container.appendChild(circle);
+            
+            if (!document.getElementById('radial-styles')) {
+                const style = document.createElement('style');
+                style.id = 'radial-styles';
+                style.textContent = `
+                    @keyframes radial-pulse {
+                        0%, 100% { 
+                            transform: translate(-50%, -50%) scale(0.8);
+                            opacity: 1;
+                        }
+                        50% { 
+                            transform: translate(-50%, -50%) scale(1.4);
+                            opacity: 0.6;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function createWaterfall(container) {
+            const gradient = document.createElement('div');
+            gradient.style.cssText = `
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(
+                    180deg,
+                    var(--clippy-primary) 0%,
+                    var(--clippy-secondary) 30%,
+                    var(--clippy-accent) 60%,
+                    transparent 100%
+                );
+                animation: waterfall-flow 3s linear infinite;
+            `;
+            container.appendChild(gradient);
+            
+            if (!document.getElementById('waterfall-styles')) {
+                const style = document.createElement('style');
+                style.id = 'waterfall-styles';
+                style.textContent = `
+                    @keyframes waterfall-flow {
+                        0% { transform: translateY(-100%); }
+                        100% { transform: translateY(100%); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function createParticleVisualizer(container) {
+            audioInterval = setInterval(() => {
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => {
+                        const particle = document.createElement('div');
+                        particle.style.cssText = `
+                            position: absolute;
+                            width: 4px;
+                            height: 4px;
+                            background: var(--clippy-primary);
+                            border-radius: 50%;
+                            left: ${Math.random() * 100}%;
+                            bottom: 0;
+                            animation: particle-rise 3s ease-out forwards;
+                        `;
+                        container.appendChild(particle);
+                        
+                        setTimeout(() => {
+                            if (particle.parentNode) {
+                                particle.parentNode.removeChild(particle);
+                            }
+                        }, 3000);
+                    }, i * 100);
+                }
+            }, 300);
+            
+            if (!document.getElementById('particle-rise-styles')) {
+                const style = document.createElement('style');
+                style.id = 'particle-rise-styles';
+                style.textContent = `
+                    @keyframes particle-rise {
+                        0% { 
+                            transform: translateY(0) scale(1);
+                            opacity: 1;
+                        }
+                        100% { 
+                            transform: translateY(-200px) scale(0);
+                            opacity: 0;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        function stopAudioDemo() {
+            if (audioInterval) {
+                clearInterval(audioInterval);
+                audioInterval = null;
+                
+                const container = document.getElementById('audioContainer');
+                container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);">Audio demo stopped</div>';
+                
+                log('⏹️ Audio visualizer stopped');
+            }
+        }
+
+        // Integration workflows
+        async function demoResearchFlow() {
+            log('🔬 Starting research workflow...');
+            
+            switchTheme('research');
+            await delay(500);
+            
+            changeMascotEmotion('thinking');
+            addParticles();
+            await delay(1000);
+            
+            animateProgress();
+            await delay(800);
+            
+            generatePattern();
+            await delay(1000);
+            
+            switchTheme('celebration');
+            changeMascotEmotion('celebrating');
+            await delay(800);
+            
+            switchTheme('default');
+            log('✅ Research workflow complete!');
+        }
+
+        async function demoSuccessFlow() {
+            log('🎉 Starting success celebration...');
+            
+            changeMascotEmotion('working');
+            animateProgress();
+            await delay(1000);
+            
+            switchTheme('celebration');
+            changeMascotEmotion('celebrating');
+            addParticles();
+            generatePattern();
+            await delay(2000);
+            
+            switchTheme('default');
+            log('✅ Success celebration complete!');
+        }
+
+        async function demoVoiceFlow() {
+            log('🎤 Starting voice interaction...');
+            
+            switchTheme('communication');
+            changeMascotEmotion('thinking');
+            await delay(500);
+            
+            startAudioDemo();
+            await delay(2000);
+            
+            changeMascotEmotion('excited');
+            await delay(1000);
+            
+            stopAudioDemo();
+            switchTheme('default');
+            log('✅ Voice interaction complete!');
+        }
+
+        // Utility
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Initialize demo
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🚀 Super Interactive Demo initialized!');
+            log('🎤 Real audio-responsive visualizers!');
+            log('🎛️ Interactive sliders for pattern control!');
+            log('🐟 Mouse effects: Rain, Fish, Spotlight!');
+            log('💬 Audio-reactive chat borders!');
+            log('✨ Sacred Geometry & Wave Simulations!');
+            
+            // Set up interactive controls
+            setupInteractiveControls();
+            
+            // Auto-generate some initial content
+            setTimeout(() => generatePattern('flowerOfLife'), 1000);
+            setTimeout(() => log('🔮 Try the sliders and mouse effects!'), 3000);
+            setTimeout(() => log('🎤 Click "Start Audio Reactive" for real-time audio!'), 5000);
+        });
+    </script>
+</body>
+</html>
