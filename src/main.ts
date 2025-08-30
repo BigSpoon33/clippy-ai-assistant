@@ -14,7 +14,6 @@ import { ClippyErrorBoundaries } from './utils/error-boundaries';
 // Import extracted components
 import { EnhancementModal, TaggingModal } from './ui/modals';
 import { ClippyInsightsView, VIEW_TYPE_CLIPPY_INSIGHTS } from './ui/views';
-import { VaultAgentSidebarView, VIEW_TYPE_VAULT_AGENT } from './ui/vault-agent-sidebar-view';
 import { ResearchAgentSidebarView, VIEW_TYPE_RESEARCH_AGENT } from './ui/research-agent-sidebar-view';
 import { ContentEnhancer } from './features/content-processing/services/content-enhancer';
 import { TagGenerator } from './features/content-processing/services/tag-generator';
@@ -30,8 +29,6 @@ import { EmbeddingManager } from './features/knowledge-management/semantic/embed
 import { SimilarityEngine } from './features/knowledge-management/semantic/similarity-engine';
 
 
-// Voice Assistant System imports
-import { LocalVoiceIntegration } from './voice/local-voice-integration';
 
 // MoE System imports  
 import { SimpleMoEOrchestrator } from './agents/simple-moe';
@@ -71,8 +68,6 @@ export default class ClippyPlugin extends Plugin {
   // embeddingManager and similarityEngine are now public shared instances above
   
   
-  // Voice Assistant System (Local Whisper + Piper)
-  public voiceSystemV2: LocalVoiceIntegration | null = null;
   
   // MoE System
   private moeOrchestrator: SimpleMoEOrchestrator | null = null;
@@ -98,11 +93,6 @@ export default class ClippyPlugin extends Plugin {
     console.log('CLIPPY AI Assistant: Unloading plugin...');
     
     
-    // Clean up voice assistant system
-    if (this.voiceSystemV2) {
-      await this.voiceSystemV2.cleanup();
-      this.voiceSystemV2 = null;
-    }
     
     // Clean up MoE system
     if (this.moeOrchestrator) {
@@ -189,9 +179,6 @@ export default class ClippyPlugin extends Plugin {
         await this.initializePhase2Components();
 
         
-        // Initialize local voice assistant system
-        await this.initializeVoiceSystemV2();
-        
         // Initialize MoE system if enabled
         if (this.settings.features.moeSystemEnabled) {
           await this.initializeMoESystem();
@@ -220,10 +207,6 @@ export default class ClippyPlugin extends Plugin {
           (leaf) => new ClippyInsightsView(leaf, this.settings)
         );
         
-        this.registerView(
-          VIEW_TYPE_VAULT_AGENT,
-          (leaf) => new VaultAgentSidebarView(leaf, this)
-        );
         
         this.registerView(
           VIEW_TYPE_RESEARCH_AGENT,
@@ -292,25 +275,6 @@ export default class ClippyPlugin extends Plugin {
   }
 
 
-  /**
-   * Initialize the local voice assistant system
-   * 
-   * Sets up Whisper STT + Piper TTS for local voice processing
-   */
-  private async initializeVoiceSystemV2(): Promise<void> {
-    try {
-      console.log('CLIPPY: Initializing Voice System v2...');
-      
-      // Initialize local voice system
-      this.voiceSystemV2 = new LocalVoiceIntegration(this);
-      await this.voiceSystemV2.initialize();
-      
-      console.log('CLIPPY: Voice System v2 initialized successfully');
-    } catch (error) {
-      console.error('CLIPPY: Voice System v2 initialization failed:', error);
-      new Notice('Voice System v2 initialization failed - check console for details');
-    }
-  }
 
   /**
    * Initialize the MoE system
@@ -334,20 +298,6 @@ export default class ClippyPlugin extends Plugin {
   }
 
 
-//   /**
-//    * Handle follow-up actions from voice commands (commented out for compatibility)
-//    */
-  // private async handleVoiceFollowUpActions(actions: string[]): Promise<void> {
-  //   for (const action of actions) {
-  //     switch (action) {
-  //       case 'voice_disable':
-  //         await this.toggleVoice();
-  //         break;
-  //       default:
-  //         console.log(`Unknown follow-up action: ${action}`);
-  //     }
-  //   }
-  // }
 
 
 
