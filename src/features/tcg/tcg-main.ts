@@ -325,6 +325,17 @@ export class TCGSystem {
         new Notice(`📦 ${data.reward} - Created pack file in vault!`);
         
         this.systemState.statistics.packsAwarded = (this.systemState.statistics.packsAwarded || 0) + 1;
+        
+        // Force metadata cache update for the new pack file
+        setTimeout(async () => {
+          // Find the newly created pack file
+          const packFiles = this.app.vault.getMarkdownFiles().filter(f => f.basename.startsWith('pack-') && f.basename.includes(generatedPack.packId));
+          if (packFiles.length > 0) {
+            // Force cache update
+            await this.app.metadataCache.getFileCache(packFiles[0]);
+            console.log(`🔄 Refreshed metadata cache for ${packFiles[0].basename}`);
+          }
+        }, 100);
       } else {
         console.error(`❌ Failed to generate ${data.packType} pack`);
         new Notice(`❌ Failed to create ${data.packType} pack - check console for details`);

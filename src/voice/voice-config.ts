@@ -61,15 +61,16 @@ export const DEFAULT_VOICE_CONFIG: VoiceConfiguration = {
         timeout: 5
     },
     
-    // Wake word configuration
+    // Wake word configuration  
     wakeWordConfig: {
-        primary: VoiceEngineType.KEYWORD_SPOTTING,
+        primary: VoiceEngineType.OPENWAKEWORD,
         engines: {
             [VoiceEngineType.OPENWAKEWORD]: {
                 enabled: true,
                 priority: 1,
                 settings: {
-                    pythonPath: 'python'
+                    pythonPath: '/home/shuma/Documents/voice_assistant/venv/bin/python',
+                    openWakeWordPath: ''
                 }
             },
             [VoiceEngineType.KEYWORD_SPOTTING]: {
@@ -79,7 +80,7 @@ export const DEFAULT_VOICE_CONFIG: VoiceConfiguration = {
             }
         },
         threshold: 0.5,
-        models: ['hey clippy', 'clippy']
+        models: ['hey_mycroft', 'hey_jarvis', 'alexa']
     },
     
     // Audio settings

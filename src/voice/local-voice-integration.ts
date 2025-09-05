@@ -38,11 +38,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { ClippySettings } from '../types';
 import { TTSManager } from './tts-manager';
+import { WakeWordManager } from './managers/wake-word-manager';
+import { createVoiceConfig } from './voice-config';
+import { VoiceEventEmitter, VoiceEngineType } from './types/voice-types';
 
 /**
  * Main class that integrates local voice capabilities into Obsidian
  */
-export class LocalVoiceIntegration {
+export class LocalVoiceIntegration implements VoiceEventEmitter {
     /** Reference to the main plugin instance */
     private plugin: any;
     
@@ -73,6 +76,12 @@ export class LocalVoiceIntegration {
     
     /** TTS Manager for multiple TTS engines */
     private ttsManager: TTSManager;
+    
+    /** Wake Word Manager for wake word detection */
+    public wakeWordManager: WakeWordManager;
+    
+    /** Event listeners for voice events */
+    private eventListeners: Map<string, Function[]> = new Map();
 
     /**
      * Constructor - Initialize the voice integration system
@@ -128,9 +137,12 @@ export class LocalVoiceIntegration {
             const piperTest = await this.testPiper();
             console.log('[CLIPPY Local Voice] Piper test:', piperTest);
             
+            // Initialize Wake Word Manager
+            await this.initializeWakeWordManager();
+            
             this.addStatusIndicator();
             
-            new Notice('🎤 Local Voice System (Whisper + Piper) ready!');
+            new Notice('🎤 Local Voice System (Whisper + Piper + OpenWakeWord) ready!');
             console.log('[CLIPPY Local Voice] Initialization complete');
             
         } catch (error) {
@@ -700,6 +712,11 @@ export class LocalVoiceIntegration {
             this.statusIndicator = null;
         }
         
+        // Cleanup Wake Word Manager
+        if (this.wakeWordManager) {
+            await this.wakeWordManager.cleanup();
+        }
+        
         // Clean up temp directory
         try {
             if (fs.existsSync(this.tempDir)) {
@@ -714,6 +731,83 @@ export class LocalVoiceIntegration {
         }
         
         console.log('[CLIPPY Local Voice] Cleanup completed');
+    }
+
+    /**
+     * Initialize Wake Word Manager
+     */
+    private async initializeWakeWordManager(): Promise<void> {
+        try {
+            console.log('[CLIPPY Local Voice] Initializing wake word manager...');
+            
+            // Create voice configuration for wake word manager
+            const voiceConfig = createVoiceConfig({
+                wakeWordConfig: {
+                    primary: VoiceEngineType.OPENWAKEWORD,
+                    engines: {
+                        [VoiceEngineType.OPENWAKEWORD]: {
+                            enabled: true,
+                            priority: 1,
+                            settings: {
+                                pythonPath: this.pythonPath,
+                                openWakeWordPath: ''
+                            }
+                        }
+                    },
+                    threshold: 0.5,
+                    models: ['hey_mycroft', 'hey_jarvis', 'alexa']
+                }
+            });
+
+            this.wakeWordManager = new WakeWordManager(voiceConfig, this);
+            
+            console.log('[CLIPPY Local Voice] Starting wake word manager initialization...');
+            console.log('[CLIPPY Local Voice] Voice config:', JSON.stringify(voiceConfig.wakeWordConfig, null, 2));
+            
+            await this.wakeWordManager.initialize();
+            
+            // Check if engines are available
+            const availableEngines = await this.wakeWordManager.getAvailableEngines();
+            console.log('[CLIPPY Local Voice] Available wake word engines:', availableEngines);
+            
+            console.log('[CLIPPY Local Voice] Wake word manager initialized');
+        } catch (error) {
+            console.error('[CLIPPY Local Voice] Failed to initialize wake word manager:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Event emitter implementation
+     */
+    public on<T extends keyof any>(event: T, callback: any): void {
+        if (!this.eventListeners.has(String(event))) {
+            this.eventListeners.set(String(event), []);
+        }
+        this.eventListeners.get(String(event))!.push(callback);
+    }
+
+    public off<T extends keyof any>(event: T, callback: any): void {
+        const listeners = this.eventListeners.get(String(event));
+        if (listeners) {
+            const index = listeners.indexOf(callback);
+            if (index !== -1) {
+                listeners.splice(index, 1);
+            }
+        }
+    }
+
+    public emit<T extends keyof any>(event: T, data: any): void {
+        const listeners = this.eventListeners.get(String(event));
+        if (listeners) {
+            listeners.forEach(callback => {
+                try {
+                    callback(data);
+                } catch (error) {
+                    console.error(`[CLIPPY Local Voice] Event listener error for ${event}:`, error);
+                }
+            });
+        }
     }
 }
 

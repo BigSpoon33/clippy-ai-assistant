@@ -77,7 +77,7 @@ ${sanitizedContext ? `Context: ${sanitizedContext}` : ''}`,
         model: this.config.model,
         messages,
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 8000,
         presence_penalty: 0.1,
         frequency_penalty: 0.1,
       });

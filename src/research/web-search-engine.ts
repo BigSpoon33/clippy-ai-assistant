@@ -76,12 +76,17 @@ export class WebSearchEngine {
                 results = await this.searchWithSearXNG(query, options);
             }
 
+            // Apply enhanced content processing (regex + Jina Reader)
+            console.log(`🔧 Processing ${results.length} search results with enhanced cleaning...`);
+            const processedResults = await this.processSearchResults(results, true);
+            console.log(`✅ Enhanced ${processedResults.length} results (filtered ${results.length - processedResults.length} low-quality)`);
+
             // Convert to ResearchSource format
             const sources = await Promise.all(
-                results.map(result => this.convertToResearchSource(result))
+                processedResults.map(result => this.convertToResearchSource(result))
             );
 
-            console.log(`✅ Found ${sources.length} web sources for: ${query}`);
+            console.log(`✅ Found ${sources.length} high-quality web sources for: ${query}`);
             return sources.filter(source => source !== null) as ResearchSource[];
 
         } catch (error) {
@@ -390,6 +395,147 @@ export class WebSearchEngine {
     }
 
     /**
+     * Clean web content using regex preprocessing before AI processing.
+     * Removes HTML, ads, navigation, and other boilerplate content.
+     */
+    private cleanWebContent(html: string): string {
+        if (!html || typeof html !== 'string') {
+            return '';
+        }
+
+        let cleaned = html;
+
+        // Remove common HTML boilerplate sections
+        cleaned = cleaned
+            // Navigation, headers, footers, sidebars
+            .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+            .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+            .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+            .replace(/<aside[^>]*>[\s\S]*?<\/aside>/gi, '')
+            .replace(/<sidebar[^>]*>[\s\S]*?<\/sidebar>/gi, '')
+            
+            // Scripts, styles, and metadata
+            .replace(/<script[\s\S]*?<\/script>/gi, '')
+            .replace(/<style[\s\S]*?<\/style>/gi, '')
+            .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+            .replace(/<meta[^>]*>/gi, '')
+            .replace(/<link[^>]*>/gi, '')
+            
+            // Common ad and tracking elements
+            .replace(/<div[^>]*class="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*id="[^"]*ad[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*banner[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*popup[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*modal[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            
+            // Cookie notices and GDPR banners
+            .replace(/<div[^>]*class="[^"]*cookie[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*gdpr[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*consent[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            
+            // Social media widgets and share buttons
+            .replace(/<div[^>]*class="[^"]*social[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<div[^>]*class="[^"]*share[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            
+            // Comments sections
+            .replace(/<div[^>]*class="[^"]*comment[^"]*"[^>]*>[\s\S]*?<\/div>/gi, '')
+            .replace(/<section[^>]*class="[^"]*comment[^"]*"[^>]*>[\s\S]*?<\/section>/gi, '');
+
+        // Convert remaining HTML to clean text
+        cleaned = cleaned
+            // Convert common HTML entities
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            
+            // Convert line breaks to spaces  
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/<p[^>]*>/gi, ' ')
+            .replace(/<\/p>/gi, ' ')
+            .replace(/<div[^>]*>/gi, ' ')
+            .replace(/<\/div>/gi, ' ')
+            
+            // Remove all remaining HTML tags
+            .replace(/<[^>]+>/g, ' ')
+            
+            // Clean up whitespace
+            .replace(/\s+/g, ' ')
+            .replace(/\n\s*\n/g, '\n')
+            .trim();
+
+        return cleaned;
+    }
+
+    /**
+     * Enhance URL content using Jina Reader API for better markdown conversion.
+     */
+    private async enhanceWithJina(url: string): Promise<string> {
+        try {
+            console.log(`📖 Using Jina Reader for: ${url}`);
+            
+            const jinaResponse = await requestUrl({
+                url: `https://r.jina.ai/${encodeURIComponent(url)}`,
+                method: 'GET',
+                headers: { 
+                    'Accept': 'text/plain',
+                    'User-Agent': 'CLIPPY-Research-Agent/1.0'
+                }
+            });
+            
+            const markdown = jinaResponse.text;
+            if (markdown && markdown.length > 50) {
+                console.log(`✅ Jina Reader success: ${markdown.length} chars`);
+                return markdown;
+            } else {
+                console.warn('Jina Reader returned minimal content');
+                return '';
+            }
+        } catch (error) {
+            console.warn(`❌ Jina Reader failed for ${url}:`, error.message);
+            return '';
+        }
+    }
+
+    /**
+     * Process search results with enhanced content cleaning.
+     * Applies regex preprocessing and optionally Jina Reader enhancement.
+     */
+    private async processSearchResults(results: WebSearchResult[], useJinaReader: boolean = true): Promise<WebSearchResult[]> {
+        const processedResults: WebSearchResult[] = [];
+        
+        for (const result of results) {
+            let processedContent = result.content || result.snippet;
+            
+            // First apply regex preprocessing
+            if (processedContent) {
+                processedContent = this.cleanWebContent(processedContent);
+            }
+            
+            // Then optionally enhance with Jina Reader for full URLs
+            if (useJinaReader && result.url && processedContent.length < 500) {
+                const jinaContent = await this.enhanceWithJina(result.url);
+                if (jinaContent && jinaContent.length > processedContent.length) {
+                    processedContent = jinaContent;
+                    console.log(`🔄 Enhanced ${result.title} with Jina Reader`);
+                }
+            }
+            
+            // Only include results with meaningful content
+            if (processedContent && processedContent.length > 100) {
+                processedResults.push({
+                    ...result,
+                    content: processedContent
+                });
+            }
+        }
+        
+        return processedResults;
+    }
+
+    /**
      * Update search engine configuration.
      */
     updateConfig(searxngConfig?: SearXNGConfig, tavilyConfig?: TavilyConfig): void {
@@ -416,7 +562,7 @@ export class WebSearchEngine {
         // Test SearXNG
         try {
             // Try CORS-enabled request first
-            let response;
+            let response: any;
             
             try {
                 response = await requestUrl({

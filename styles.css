@@ -322,6 +322,7 @@
 .checklist-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 4px 0;
   font-size: 12px;
@@ -366,6 +367,551 @@
   color: var(--text-error);
   margin-top: 2px;
   padding-left: 20px;
+}
+
+/* Research topic button sections */
+.item-left-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow text truncation */
+}
+
+.item-left-section.clickable {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+.item-left-section.clickable:hover {
+  background: var(--background-modifier-hover);
+}
+
+.item-center-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.item-right-section {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Action buttons (center) */
+.item-action-btn {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 24px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-action-btn:hover {
+  background: var(--interactive-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.item-action-btn:active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Utility buttons (right) */
+.item-utility-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 20px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.item-utility-btn:hover {
+  background: var(--background-modifier-hover);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.item-utility-btn.trash-btn:hover {
+  background: var(--background-modifier-error-hover);
+  color: var(--text-error);
+}
+
+.item-utility-btn.refresh-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Project header button styles */
+.project-actions-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+/* Project action buttons (same as item buttons but slightly larger) */
+.project-action-btn {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 26px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-action-btn:hover {
+  background: var(--interactive-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.project-action-btn:active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Project utility buttons (same as item buttons but slightly larger) */
+.project-utility-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+}
+
+.project-utility-btn:hover {
+  background: var(--background-modifier-hover);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.project-utility-btn.trash-btn:hover {
+  background: var(--background-modifier-error-hover);
+  color: var(--text-error);
+}
+
+.project-utility-btn.refresh-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+/* Project tab container */
+.project-tab-container {
+  margin-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: 8px;
+}
+
+/* Tab navigation */
+.project-tab-nav {
+  display: flex;
+  background: var(--background-secondary);
+  border-radius: 6px 6px 0 0;
+  border: 1px solid var(--background-modifier-border);
+  border-bottom: none;
+  overflow: hidden;
+}
+
+/* Tab buttons */
+.project-tab-btn {
+  background: var(--background-secondary);
+  border: none;
+  padding: 8px 12px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-muted);
+  flex: 1;
+  text-align: center;
+  border-right: 1px solid var(--background-modifier-border);
+  position: relative;
+}
+
+.project-tab-btn:last-child {
+  border-right: none;
+}
+
+.project-tab-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.project-tab-btn.active {
+  background: var(--background-primary);
+  color: var(--text-accent);
+  border-bottom: 2px solid var(--interactive-accent);
+}
+
+/* Tab content */
+.project-tab-content {
+  border: 1px solid var(--background-modifier-border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: var(--background-primary);
+  min-height: 40px;
+}
+
+/* Tab panels */
+.project-tab-panel {
+  display: none;
+  padding: 12px;
+}
+
+.project-tab-panel.active {
+  display: block;
+}
+
+/* Add Topics form */
+.add-topics-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topics-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.topics-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 11px;
+  font-family: var(--font-interface);
+  resize: vertical;
+  min-height: 60px;
+}
+
+.topics-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.add-topics-submit-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-end;
+}
+
+.add-topics-submit-btn:hover {
+  background: var(--interactive-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Inline settings form */
+.inline-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group h4 {
+  margin: 0 0 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-accent);
+}
+
+.settings-group label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.settings-input {
+  padding: 4px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 11px;
+}
+
+.settings-select {
+  padding: 4px 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 3px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 10px !important;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+.save-settings-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-end;
+}
+
+.save-settings-btn:hover {
+  background: var(--interactive-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Delete Topic Modal Styles */
+.delete-topic-modal .modal {
+  max-width: 450px;
+}
+
+.delete-modal-header {
+  text-align: center;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--background-modifier-border);
+  margin-bottom: 20px;
+}
+
+.delete-modal-emoji {
+  font-size: 48px;
+  margin-bottom: 10px;
+}
+
+.delete-modal-title {
+  margin: 10px 0 5px 0;
+  color: var(--text-normal);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.delete-modal-subtitle {
+  color: var(--text-accent);
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* File Action Toggle Section */
+.file-action-toggle-section {
+  margin: 20px 0;
+}
+
+.toggle-label {
+  text-align: center;
+  margin-bottom: 15px;
+  font-size: 14px;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.fun-toggle-container {
+  display: flex;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--background-modifier-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-option {
+  flex: 1;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: var(--background-secondary);
+  border: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.toggle-option::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 49%, rgba(255, 255, 255, 0.1) 50%, transparent 51%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.toggle-option:hover::before {
+  opacity: 1;
+}
+
+.toggle-emoji {
+  font-size: 32px;
+  margin-bottom: 8px;
+  transition: transform 0.3s ease;
+}
+
+.toggle-text {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-normal);
+}
+
+.toggle-subtext {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Keep Files Option (Green when active) */
+.keep-option.active {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+}
+
+.keep-option.active .toggle-text,
+.keep-option.active .toggle-subtext {
+  color: white;
+}
+
+.keep-option.active .toggle-emoji {
+  transform: scale(1.2) rotate(5deg);
+}
+
+/* Delete Files Option (Red when active) */
+.delete-option.active {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+}
+
+.delete-option.active .toggle-text,
+.delete-option.active .toggle-subtext {
+  color: white;
+}
+
+.delete-option.active .toggle-emoji {
+  transform: scale(1.2) rotate(-5deg);
+}
+
+/* Hover effects for inactive options */
+.toggle-option:not(.active):hover {
+  background: var(--background-modifier-hover);
+  transform: translateY(-2px);
+}
+
+.toggle-option:not(.active):hover .toggle-emoji {
+  transform: scale(1.1);
+}
+
+/* Modal Buttons */
+.delete-modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.delete-modal-btn {
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  min-width: 120px;
+}
+
+.cancel-btn {
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.cancel-btn:hover {
+  background: var(--background-modifier-hover);
+  transform: translateY(-1px);
+}
+
+.confirm-btn {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.confirm-btn:hover {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+/* Left-positioned play/pause button (after status emoji) */
+.project-play-pause-btn.left-positioned {
+  margin-left: 8px;
+  margin-right: 8px;
+  order: -1; /* Ensure it stays in the correct position */
 }
 
 .quick-actions-container {

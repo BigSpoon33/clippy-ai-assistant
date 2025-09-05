@@ -68,7 +68,7 @@ ${sanitizedContext ? `Context: ${sanitizedContext}` : ''}`;
 
       const response = await this.client.messages.create({
         model: this.config.model,
-        max_tokens: 1000,
+        max_tokens: 8000,
         temperature: 0.7,
         system: systemMessage,
         messages: [
@@ -118,7 +118,7 @@ ${sanitizedContext ? `Context: ${sanitizedContext}` : ''}`;
 
       const stream = await this.client.messages.create({
         model: this.config.model,
-        max_tokens: 1000,
+        max_tokens: 8000,
         temperature: 0.7,
         system: systemMessage,
         messages: [
@@ -185,7 +185,7 @@ Always respond with valid JSON following the specified format exactly.`;
 
       const response = await this.client.messages.create({
         model: this.config.model,
-        max_tokens: 1000,
+        max_tokens: 8000,
         temperature: 0.3, // Lower temperature for consistent analysis
         system: systemMessage,
         messages: [

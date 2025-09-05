@@ -47,16 +47,28 @@ export class WakeWordManager implements VoiceEventEmitter {
             // Initialize all engines
             for (const [engineType, EngineClass] of Object.entries(engineClasses)) {
                 try {
+                    this.logger.info(`[WakeWordManager] Initializing ${engineType} engine...`);
                     const engine = new EngineClass(this.config, this.eventEmitter);
                     this.engines.set(engineType as VoiceEngineType, engine);
                     
-                    // Wait for initialization
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    // Properly await the engine initialization
+                    this.logger.debug(`[WakeWordManager] Calling initialize() for ${engineType}...`);
+                    await (engine as any).initialize();
+                    
+                    this.logger.debug(`[WakeWordManager] Checking availability for ${engineType}...`);
                     
                     if (engine.isEngineAvailable()) {
                         this.logger.info(`[WakeWordManager] ✅ ${engineType} engine available`);
                     } else {
                         this.logger.warn(`[WakeWordManager] ❌ ${engineType} engine not available`);
+                        
+                        // Try to test the engine explicitly
+                        try {
+                            const testResult = await engine.test();
+                            this.logger.debug(`[WakeWordManager] Engine test result for ${engineType}: ${testResult}`);
+                        } catch (testError) {
+                            this.logger.error(`[WakeWordManager] Engine test failed for ${engineType}:`, testError);
+                        }
                     }
                 } catch (error) {
                     this.logger.error(`[WakeWordManager] Failed to initialize ${engineType}:`, error);
@@ -67,7 +79,7 @@ export class WakeWordManager implements VoiceEventEmitter {
             this.setupFallbackChain();
 
             // Set current engine
-            await this.setEngine(this.config.wakeWord.primary);
+            await this.setEngine(this.config.wakeWordConfig.primary);
 
             this.logger.info('[WakeWordManager] Wake Word Manager initialized');
 
@@ -399,7 +411,7 @@ export class WakeWordManager implements VoiceEventEmitter {
         
         // Update current threshold if needed
         if (this.currentEngine) {
-            this.currentEngine.setThreshold(config.wakeWord.threshold);
+            this.currentEngine.setThreshold(config.wakeWordConfig.threshold);
         }
     }
 

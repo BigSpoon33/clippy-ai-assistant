@@ -268,7 +268,7 @@ export class GameHistoryManager {
    * Add new history entry
    */
   addEntry(partialEntry: Partial<GameHistoryEntry>): GameHistoryEntry {
-    return ClippyErrorBoundaries.catchAndReturn(
+    const result = ClippyErrorBoundaries.validationOperation(
       () => {
         const entry: GameHistoryEntry = {
           id: this.generateEntryId(),
@@ -297,11 +297,11 @@ export class GameHistoryManager {
 
         return entry;
       },
-      (error) => {
-        console.error('Failed to add history entry:', error);
-        return this.createErrorEntry(error, 'GameHistoryManager');
-      }
+      'add history entry',
+      this.createErrorEntry(new Error('Failed to add history entry'), 'GameHistoryManager')
     );
+    
+    return result || this.createErrorEntry(new Error('Failed to add history entry'), 'GameHistoryManager');
   }
 
   /**

@@ -7,6 +7,7 @@ import { App, PluginSettingTab, Setting, Notice, Modal } from 'obsidian';
 import { ClippySettings, DEFAULT_SETTINGS, AI_MODELS } from './types';
 import { ProviderFactory } from './ai/provider-factory';
 import { SecureStorage, ContentSanitizer } from './utils/secure-storage';
+import { TemplateRegistry } from './research/template-registry';
 import ClippyPlugin from './main';
 
 export class ClippySettingsTab extends PluginSettingTab {
@@ -815,18 +816,8 @@ SEARXNG_CORS_ORIGINS="app://obsidian.md,http://localhost"`;
           });
       });
 
-    new Setting(containerEl)
-      .setName('Default template')
-      .setDesc('Default note template for research generation')
-      .addDropdown(dropdown => {
-        dropdown
-          .addOption('research-standard', 'Research Standard (Comprehensive)')
-          .setValue(this.plugin.settings.research.defaults.template)
-          .onChange(async (value) => {
-            this.plugin.settings.research.defaults.template = value;
-            await this.plugin.saveSettings();
-          });
-      });
+    // Enhanced Template Management Section
+    this.addTemplateManagementSection(containerEl);
 
     new Setting(containerEl)
       .setName('Show AI thinking process')
@@ -1024,6 +1015,39 @@ Format your response with clear headings and bullet points for each section.`;
           });
       });
 
+    // Backlinks Configuration
+    containerEl.createEl('h4', { text: 'Backlinks Configuration' });
+    containerEl.createEl('p', { 
+      text: 'Configure automatic backlink generation for research notes.',
+      cls: 'setting-item-description'
+    });
+
+    new Setting(containerEl)
+      .setName('Enable backlinks generation')
+      .setDesc('Automatically generate backlinks to related notes based on conceptual relationships')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.research.backlinks.enabled)
+          .onChange(async (value) => {
+            this.plugin.settings.research.backlinks.enabled = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName('Backlinks position')
+      .setDesc('Where to place generated backlinks in research notes')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('top', 'Top of note')
+          .addOption('bottom', 'Bottom of note')
+          .setValue(this.plugin.settings.research.backlinks.position)
+          .onChange(async (value: 'top' | 'bottom') => {
+            this.plugin.settings.research.backlinks.position = value;
+            await this.plugin.saveSettings();
+          });
+      });
+
     // Note: Embedding and RAG settings moved to dedicated RAG section
   }
 
@@ -1055,18 +1079,31 @@ Format your response with clear headings and bullet points for each section.`;
           });
       });
 
-    // Embedding model
+    // Embedding model (Dynamic dropdown)
     new Setting(containerEl)
       .setName('Embedding model')
-      .setDesc('Model name for embedding computation')
-      .addText(text => {
-        text
-          .setPlaceholder('nomic-embed-text')
-          .setValue(this.plugin.settings.rag.embeddings.model)
-          .onChange(async (value) => {
+      .setDesc('Select from available Ollama embedding models (filters models with "embed" in name)')
+      .addDropdown(async (dropdown) => {
+        // Add loading state
+        dropdown.addOption('loading', '🔄 Loading models...');
+        dropdown.setValue('loading');
+        
+        // Load available embedding models asynchronously
+        try {
+          await this.loadOllamaEmbeddingModels(dropdown);
+        } catch (error) {
+          console.error('Failed to load embedding models:', error);
+          dropdown.selectEl.empty();
+          dropdown.addOption('', '❌ Failed to load models');
+          dropdown.addOption('nomic-embed-text', 'nomic-embed-text (fallback)');
+          dropdown.addOption('mxbai-embed-large', 'mxbai-embed-large (fallback)');
+          dropdown.addOption('all-MiniLM-L6-v2', 'all-MiniLM-L6-v2 (fallback)');
+          dropdown.setValue(this.plugin.settings.rag.embeddings.model || 'nomic-embed-text');
+          dropdown.onChange(async (value) => {
             this.plugin.settings.rag.embeddings.model = value;
             await this.plugin.saveSettings();
           });
+        }
       });
 
     // Ollama URL
@@ -1084,38 +1121,67 @@ Format your response with clear headings and bullet points for each section.`;
       });
 
     // Vector dimensions
-    new Setting(containerEl)
+    const dimensionsSetting = new Setting(containerEl)
       .setName('Vector dimensions')
-      .setDesc('Number of dimensions for embedding vectors (768, 1024, 1536, etc.)')
+      .setDesc('Number of dimensions for embedding vectors (leave empty to use recommended value)')
       .addText(text => {
         text
-          .setPlaceholder('768')
-          .setValue(this.plugin.settings.rag.embeddings.dimensions.toString())
+          .setPlaceholder('Auto-detect from model')
+          .setValue(this.plugin.settings.rag.embeddings.dimensions?.toString() || '')
           .onChange(async (value) => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              this.plugin.settings.rag.embeddings.dimensions = num;
-              await this.plugin.saveSettings();
+            if (value === '') {
+              // Clear the setting to use auto-detection
+              this.plugin.settings.rag.embeddings.dimensions = undefined;
+            } else {
+              const num = parseInt(value);
+              if (!isNaN(num) && num > 0) {
+                this.plugin.settings.rag.embeddings.dimensions = num;
+              }
             }
+            await this.plugin.saveSettings();
           });
       });
+    
+    // Store reference for updating recommendations and add initial recommendation
+    (this as any)._dimensionsContainer = dimensionsSetting.settingEl;
+    
+    // Add initial recommendations for current model
+    const currentModel = this.plugin.settings.rag.embeddings.model;
+    if (currentModel) {
+      const recommendations = this.getModelRecommendations(currentModel);
+      this.updateRecommendationDisplay(dimensionsSetting.settingEl, 'dimensions', recommendations.dimensions);
+    }
 
     // Max tokens
-    new Setting(containerEl)
+    const maxTokensSetting = new Setting(containerEl)
       .setName('Max tokens per embedding')
-      .setDesc('Maximum tokens to process per embedding request')
+      .setDesc('Maximum tokens to process per embedding request (leave empty to use recommended value)')
       .addText(text => {
         text
-          .setPlaceholder('2048')
-          .setValue(this.plugin.settings.rag.embeddings.maxTokens.toString())
+          .setPlaceholder('Auto-detect from model')
+          .setValue(this.plugin.settings.rag.embeddings.maxTokens?.toString() || '')
           .onChange(async (value) => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              this.plugin.settings.rag.embeddings.maxTokens = num;
-              await this.plugin.saveSettings();
+            if (value === '') {
+              // Clear the setting to use auto-detection
+              this.plugin.settings.rag.embeddings.maxTokens = undefined;
+            } else {
+              const num = parseInt(value);
+              if (!isNaN(num) && num > 0) {
+                this.plugin.settings.rag.embeddings.maxTokens = num;
+              }
             }
+            await this.plugin.saveSettings();
           });
       });
+    
+    // Store reference for updating recommendations and add initial recommendation
+    (this as any)._maxTokensContainer = maxTokensSetting.settingEl;
+    
+    // Add initial recommendations for current model
+    if (currentModel) {
+      const recommendations = this.getModelRecommendations(currentModel);
+      this.updateRecommendationDisplay(maxTokensSetting.settingEl, 'maxTokens', recommendations.maxTokens);
+    }
 
     // Enable cache
     new Setting(containerEl)
@@ -1168,21 +1234,35 @@ Format your response with clear headings and bullet points for each section.`;
       });
 
     // Chunk size
-    new Setting(containerEl)
+    const chunkSizeSetting = new Setting(containerEl)
       .setName('Chunk size')
-      .setDesc('Target characters per chunk (recommended: 800-1200)')
+      .setDesc('Target characters per chunk (leave empty to use recommended value based on embedding model)')
       .addText(text => {
         text
-          .setPlaceholder('1000')
-          .setValue(this.plugin.settings.rag.chunking.chunkSize.toString())
+          .setPlaceholder('Auto-detect from embedding model')
+          .setValue(this.plugin.settings.rag.chunking.chunkSize?.toString() || '')
           .onChange(async (value) => {
-            const num = parseInt(value);
-            if (!isNaN(num) && num > 0) {
-              this.plugin.settings.rag.chunking.chunkSize = num;
-              await this.plugin.saveSettings();
+            if (value === '') {
+              // Clear the setting to use auto-detection
+              this.plugin.settings.rag.chunking.chunkSize = undefined;
+            } else {
+              const num = parseInt(value);
+              if (!isNaN(num) && num > 0) {
+                this.plugin.settings.rag.chunking.chunkSize = num;
+              }
             }
+            await this.plugin.saveSettings();
           });
       });
+    
+    // Store reference for updating recommendations and add initial recommendation
+    (this as any)._chunkSizeContainer = chunkSizeSetting.settingEl;
+    
+    // Add initial recommendations for current model
+    if (currentModel) {
+      const recommendations = this.getModelRecommendations(currentModel);
+      this.updateRecommendationDisplay(chunkSizeSetting.settingEl, 'chunkSize', recommendations.chunkSize);
+    }
 
     // Chunk overlap
     new Setting(containerEl)
@@ -2286,6 +2366,480 @@ pip install piper-tts
     colorNote.textContent = '💡 Use "auto" for colors to automatically match your Obsidian theme. Use hex codes like #ff0000 for custom colors.';
   }
 
+  /**
+   * Add enhanced template management section
+   */
+  private addTemplateManagementSection(containerEl: HTMLElement): void {
+    // Template Management Header
+    containerEl.createEl('h4', { text: 'Template Management' });
+    containerEl.createEl('p', { 
+      text: 'Configure and customize research note templates with dynamic variables.',
+      cls: 'setting-item-description'
+    });
+
+    // Template Selection Dropdown
+    const templateSetting = new Setting(containerEl)
+      .setName('Default template')
+      .setDesc('Select and customize your research note template');
+
+    const dropdownContainer = templateSetting.controlEl.createEl('div', { cls: 'template-dropdown-container' });
+    dropdownContainer.style.cssText = 'display: flex; gap: 8px; align-items: center; margin-bottom: 12px;';
+
+    const dropdown = dropdownContainer.createEl('select', { cls: 'dropdown' });
+    dropdown.style.cssText = 'flex: 0 0 auto; min-width: 200px;';
+
+    // Get template options from centralized registry
+    const registry = TemplateRegistry.getInstance(this.app);
+    const templates = registry.getTemplateOptions(true).map((option: any) => ({
+      value: option.value,
+      name: option.text
+    }));
+
+    templates.forEach(template => {
+      const option = dropdown.createEl('option', { 
+        text: template.name,
+        attr: { value: template.value }
+      });
+      if (template.value === this.plugin.settings.research.defaults.template) {
+        option.selected = true;
+      }
+    });
+
+    // Template Editor Button
+    const editBtn = dropdownContainer.createEl('button', {
+      text: '✏️ Edit Template',
+      type: 'button',
+      cls: 'mod-cta'
+    });
+    editBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+
+    // Reset to Standard Template Button
+    const resetBtn = dropdownContainer.createEl('button', {
+      text: '🔄 Reset to Standard',
+      type: 'button',
+      cls: 'mod-warning'
+    });
+    resetBtn.style.cssText = 'padding: 6px 12px; font-size: 12px; background-color: var(--color-red); color: var(--text-on-accent);';
+
+    // Available Variables Display
+    const variablesContainer = containerEl.createEl('div', { cls: 'template-variables' });
+    variablesContainer.style.cssText = `
+      background: var(--background-secondary);
+      padding: 12px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border: 1px solid var(--background-modifier-border);
+    `;
+    
+    variablesContainer.createEl('h5', { text: 'Available Template Variables' });
+    
+    const variablesList = [
+      '{{tags}} - AI-generated tags based on vault patterns',
+      '{{projectName}} - Research project name', 
+      '{{topicName}} - Current research topic',
+      '{{today}} - Current date',
+      '{{status}} - Research status',
+      '{{EXTRACTED_WISDOM}} - AI-synthesized research insights',
+      '{{VAULT_SEARCH_RESULTS}} - Content from vault notes',
+      '{{WEB_SEARCH_RESULTS}} - Web research findings',
+      '{{RESEARCH_BACKLINKS}} - Related concept links',
+      '{{FRONTMATTER_FIELDS}} - Dynamic metadata fields'
+    ];
+
+    const variablesListEl = variablesContainer.createEl('ul');
+    variablesListEl.style.cssText = 'margin: 8px 0; font-family: var(--font-monospace); font-size: 12px;';
+    
+    variablesList.forEach(variable => {
+      const li = variablesListEl.createEl('li');
+      li.style.cssText = 'margin: 4px 0; color: var(--text-muted);';
+      li.textContent = variable;
+    });
+
+    // Event Handlers
+    dropdown.addEventListener('change', async () => {
+      this.plugin.settings.research.defaults.template = dropdown.value;
+      await this.plugin.saveSettings();
+    });
+
+    editBtn.addEventListener('click', () => {
+      this.openTemplateEditor(dropdown.value);
+    });
+
+    resetBtn.addEventListener('click', () => {
+      this.resetToStandardTemplate();
+    });
+
+    // Add Custom Template from Vault Section
+    console.log('🔧 DEBUG: About to add vault template management');
+    try {
+      this.addVaultTemplateManagement(containerEl, registry);
+      console.log('✅ DEBUG: Vault template management added successfully');
+    } catch (error) {
+      console.error('❌ DEBUG: Error adding vault template management:', error);
+    }
+  }
+
+  /**
+   * Add vault template management UI
+   */
+  private addVaultTemplateManagement(containerEl: HTMLElement, registry: any): void {
+    console.log('🔧 DEBUG: addVaultTemplateManagement called with:', { containerEl, registry });
+    
+    // Vault Templates Section Header
+    const vaultSection = containerEl.createEl('div', { cls: 'vault-templates-section' });
+    console.log('🔧 DEBUG: Created vault section:', vaultSection);
+    vaultSection.style.cssText = 'margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--background-modifier-border);';
+    
+    vaultSection.createEl('h5', { text: 'Custom Templates from Vault' });
+    vaultSection.createEl('p', { 
+      text: 'Add template files from your vault to use as research templates. Template files should contain markdown with {{variable}} placeholders.',
+      cls: 'setting-item-description'
+    });
+
+    // Add template from vault
+    const addTemplateSetting = new Setting(vaultSection)
+      .setName('Add template from vault')
+      .setDesc('Select a markdown file from your vault to use as a template');
+
+    const addContainer = addTemplateSetting.controlEl.createEl('div', { cls: 'add-template-container' });
+    addContainer.style.cssText = 'display: flex; gap: 8px; align-items: center; flex-wrap: wrap;';
+
+    const pathInput = addContainer.createEl('input', { type: 'text', placeholder: 'Type to search for template files...' });
+    pathInput.style.cssText = 'flex: 1; min-width: 200px; padding: 4px 8px; position: relative;';
+
+    const nameInput = addContainer.createEl('input', { type: 'text', placeholder: 'Template name' });
+    nameInput.style.cssText = 'flex: 0 0 150px; padding: 4px 8px;';
+
+    const addBtn = addContainer.createEl('button', { text: '➕ Add Template', type: 'button', cls: 'mod-cta' });
+    addBtn.style.cssText = 'padding: 4px 12px; font-size: 12px;';
+
+    // Autocomplete dropdown for path input
+    const autocompleteContainer = addContainer.createEl('div', { cls: 'autocomplete-container' });
+    autocompleteContainer.style.cssText = 'position: relative; width: 100%; flex: 1; min-width: 200px;';
+    
+    // Move path input to autocomplete container
+    autocompleteContainer.appendChild(pathInput);
+    addContainer.insertBefore(autocompleteContainer, nameInput);
+    
+    const autocompleteDropdown = autocompleteContainer.createEl('div', { cls: 'autocomplete-dropdown' });
+    autocompleteDropdown.style.cssText = `
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--background-primary);
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    `;
+
+    // Existing vault templates list
+    const existingTemplatesContainer = vaultSection.createEl('div', { cls: 'existing-vault-templates' });
+    this.updateVaultTemplatesList(existingTemplatesContainer, registry);
+
+    // Event handlers
+    this.setupPathInputAutocomplete(pathInput, autocompleteDropdown, nameInput);
+    addBtn.addEventListener('click', async () => {
+      const filePath = pathInput.value.trim();
+      const templateName = nameInput.value.trim();
+      
+      if (!filePath) {
+        new Notice('❌ Please enter a template file path');
+        return;
+      }
+      
+      if (!templateName) {
+        new Notice('❌ Please enter a template name');
+        return;
+      }
+
+      addBtn.disabled = true;
+      addBtn.textContent = '⏳ Adding...';
+      
+      const success = await registry.addTemplateFromVaultFile(filePath, templateName);
+      
+      if (success) {
+        new Notice(`✅ Template "${templateName}" added successfully!`);
+        pathInput.value = '';
+        nameInput.value = '';
+        this.updateVaultTemplatesList(existingTemplatesContainer, registry);
+        this.display(); // Refresh settings to update dropdown
+      } else {
+        new Notice('❌ Failed to add template. Check file path and try again.');
+      }
+      
+      addBtn.disabled = false;
+      addBtn.textContent = '➕ Add Template';
+    });
+  }
+
+  /**
+   * Setup autocomplete functionality for path input
+   */
+  private setupPathInputAutocomplete(pathInput: HTMLInputElement, dropdown: HTMLElement, nameInput: HTMLInputElement): void {
+    let markdownFiles: any[] = [];
+    
+    // Get all markdown files from vault
+    try {
+      markdownFiles = this.app.vault.getMarkdownFiles();
+    } catch (error) {
+      console.error('Failed to get markdown files:', error);
+      return;
+    }
+
+    // Filter and display suggestions
+    const updateSuggestions = (query: string) => {
+      dropdown.empty();
+      
+      if (!query.trim()) {
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      const filtered = markdownFiles.filter(file => 
+        file.path.toLowerCase().includes(query.toLowerCase()) ||
+        file.basename.toLowerCase().includes(query.toLowerCase())
+      ).slice(0, 10); // Limit to 10 results
+
+      if (filtered.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      filtered.forEach(file => {
+        const suggestion = dropdown.createEl('div', { cls: 'autocomplete-suggestion' });
+        suggestion.style.cssText = `
+          padding: 8px 12px;
+          cursor: pointer;
+          border-bottom: 1px solid var(--background-modifier-border);
+          transition: background-color 0.1s;
+        `;
+
+        suggestion.addEventListener('mouseenter', () => {
+          suggestion.style.backgroundColor = 'var(--background-secondary)';
+        });
+
+        suggestion.addEventListener('mouseleave', () => {
+          suggestion.style.backgroundColor = 'transparent';
+        });
+
+        const fileName = suggestion.createEl('div', { cls: 'file-name' });
+        fileName.style.cssText = 'font-weight: 500; margin-bottom: 2px;';
+        fileName.textContent = file.basename;
+
+        const filePath = suggestion.createEl('div', { cls: 'file-path' });
+        filePath.style.cssText = 'font-size: 11px; color: var(--text-muted);';
+        filePath.textContent = file.path;
+
+        suggestion.addEventListener('click', () => {
+          pathInput.value = file.path;
+          
+          // Auto-fill template name if empty
+          if (!nameInput.value.trim()) {
+            nameInput.value = file.basename.replace(/\.md$/, '').replace(/[-_]/g, ' ');
+          }
+          
+          dropdown.style.display = 'none';
+          nameInput.focus();
+        });
+      });
+
+      dropdown.style.display = 'block';
+    };
+
+    // Input event listener
+    pathInput.addEventListener('input', (e) => {
+      const target = e.target as HTMLInputElement;
+      updateSuggestions(target.value);
+    });
+
+    // Focus event listener
+    pathInput.addEventListener('focus', (e) => {
+      const target = e.target as HTMLInputElement;
+      if (target.value.trim()) {
+        updateSuggestions(target.value);
+      }
+    });
+
+    // Hide dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!pathInput.contains(e.target as Node) && !dropdown.contains(e.target as Node)) {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    // Keyboard navigation
+    pathInput.addEventListener('keydown', (e) => {
+      const suggestions = dropdown.querySelectorAll('.autocomplete-suggestion');
+      if (suggestions.length === 0) return;
+
+      let selectedIndex = -1;
+      suggestions.forEach((suggestion, index) => {
+        if (suggestion.classList.contains('selected')) {
+          selectedIndex = index;
+        }
+      });
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedIndex = Math.min(selectedIndex + 1, suggestions.length - 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedIndex = Math.max(selectedIndex - 1, -1);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedIndex >= 0) {
+          (suggestions[selectedIndex] as HTMLElement).click();
+        }
+        return;
+      } else if (e.key === 'Escape') {
+        dropdown.style.display = 'none';
+        return;
+      }
+
+      // Update selection
+      suggestions.forEach((suggestion, index) => {
+        suggestion.classList.toggle('selected', index === selectedIndex);
+        if (index === selectedIndex) {
+          suggestion.style.backgroundColor = 'var(--background-modifier-hover)';
+        } else {
+          suggestion.style.backgroundColor = 'transparent';
+        }
+      });
+    });
+  }
+
+  /**
+   * Update the list of existing vault templates
+   */
+  private updateVaultTemplatesList(container: HTMLElement, registry: any): void {
+    container.empty();
+    
+    const vaultTemplates = registry.getAllTemplates().filter((t: any) => t.category === 'vault-file');
+    
+    if (vaultTemplates.length === 0) {
+      container.createEl('p', { 
+        text: 'No vault templates added yet.',
+        cls: 'setting-item-description'
+      });
+      return;
+    }
+
+    container.createEl('h6', { text: 'Existing Vault Templates' });
+    
+    const templatesList = container.createEl('div', { cls: 'vault-templates-list' });
+    templatesList.style.cssText = 'margin: 8px 0;';
+    
+    vaultTemplates.forEach((template: any) => {
+      const templateItem = templatesList.createEl('div', { cls: 'vault-template-item' });
+      templateItem.style.cssText = `
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        padding: 8px 12px; 
+        margin: 4px 0; 
+        background: var(--background-secondary);
+        border-radius: 4px;
+        border: 1px solid var(--background-modifier-border);
+      `;
+      
+      const templateInfo = templateItem.createEl('div');
+      templateInfo.createEl('strong', { text: template.name });
+      templateInfo.createEl('br');
+      templateInfo.createEl('small', { 
+        text: `File: ${template.filePath}`,
+        cls: 'setting-item-description'
+      });
+      
+      const templateActions = templateItem.createEl('div', { cls: 'template-actions' });
+      templateActions.style.cssText = 'display: flex; gap: 4px;';
+      
+      const refreshBtn = templateActions.createEl('button', { text: '🔄', title: 'Refresh from file' });
+      refreshBtn.style.cssText = 'padding: 2px 6px; font-size: 12px;';
+      
+      const removeBtn = templateActions.createEl('button', { text: '🗑️', title: 'Remove template' });
+      removeBtn.style.cssText = 'padding: 2px 6px; font-size: 12px; color: var(--color-red);';
+      
+      refreshBtn.addEventListener('click', async () => {
+        const success = await registry.refreshVaultFileTemplate(template.id);
+        if (success) {
+          new Notice(`✅ Template "${template.name}" refreshed`);
+        } else {
+          new Notice(`❌ Failed to refresh template "${template.name}"`);
+        }
+      });
+      
+      removeBtn.addEventListener('click', () => {
+        const confirmed = confirm(`Remove template "${template.name}"?\n\nThis will remove the template from the registry but won't delete the original file.`);
+        if (confirmed) {
+          const success = registry.removeVaultFileTemplate(template.id);
+          if (success) {
+            new Notice(`✅ Template "${template.name}" removed`);
+            this.updateVaultTemplatesList(container, registry);
+            this.display(); // Refresh settings to update dropdown
+          } else {
+            new Notice(`❌ Failed to remove template "${template.name}"`);
+          }
+        }
+      });
+    });
+  }
+
+
+  /**
+   * Open template editor modal
+   */
+  private openTemplateEditor(templateType: string): void {
+    const modal = new TemplateEditorModal(this.app, this.plugin, templateType);
+    modal.open();
+  }
+
+  /**
+   * Reset research template to standard template with confirmation dialog
+   */
+  private async resetToStandardTemplate(): Promise<void> {
+    const confirmed = confirm(
+      '⚠️ Reset Research Template\n\n' +
+      'This will replace your current custom research template with the standard template. ' +
+      'This action cannot be undone.\n\n' +
+      'Are you sure you want to continue?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      // Get the standard template from the registry
+      const registry = TemplateRegistry.getInstance();
+      const standardTemplate = registry.getTemplateContent('research-standard');
+      
+      // Set the research template to use the standard template
+      if (!this.plugin.settings.research.templates) {
+        this.plugin.settings.research.templates = {};
+      }
+      
+      // Set the standard template as the research template
+      this.plugin.settings.research.templates.research = standardTemplate;
+      
+      // Also update the default template setting
+      this.plugin.settings.research.defaults.template = 'research-standard';
+      
+      // Save settings
+      await this.plugin.saveSettings();
+
+      // Refresh the settings display
+      this.display();
+
+      // Show success message
+      new Notice('✅ Research template has been reset to standard template');
+    } catch (error) {
+      console.error('Failed to reset research template:', error);
+      new Notice('❌ Failed to reset research template. Please try again.');
+    }
+  }
+
   private addTestSection(): void {
     const { containerEl } = this;
 
@@ -2417,6 +2971,108 @@ pip install piper-tts
             button.setDisabled(false);
           });
       });
+  }
+
+  /**
+   * Load available Ollama embedding models using 'ollama list' command
+   * Filters models that are suitable for embeddings
+   */
+  private async loadOllamaEmbeddingModels(dropdown: any): Promise<void> {
+    try {
+      // Try to fetch models from Ollama
+      const models = await this.fetchOllamaModels();
+      
+      // Filter models that are likely embedding models
+      const embeddingModels = models.filter(model => {
+        const name = model.name.toLowerCase();
+        return name.includes('embed') || 
+               name.includes('qwen') ||
+               name.includes('nomic') ||
+               name.includes('mxbai') ||
+               name.includes('sentence') ||
+               name.includes('minilm') ||
+               name.includes('all-') ||
+               name.includes('e5-');
+      });
+      
+      // Clear the dropdown
+      dropdown.selectEl.empty();
+      
+      if (embeddingModels.length === 0) {
+        // No embedding models found, show all models + common embedding models
+        dropdown.addOption('', '⚠️ No embedding models detected');
+        
+        // Add all available models (user might know which ones work)
+        if (models.length > 0) {
+          models.forEach(model => {
+            dropdown.addOption(model.name, `${model.name} (${model.size}) - General model`);
+          });
+        }
+        
+        // Add common embedding models that might not be installed
+        const commonEmbeddingModels = [
+          'nomic-embed-text',
+          'mxbai-embed-large', 
+          'all-MiniLM-L6-v2',
+          'qwen2.5:0.5b',
+          'qwen3-embedding'
+        ];
+        commonEmbeddingModels.forEach(model => {
+          if (!models.find(m => m.name === model)) {
+            dropdown.addOption(model, `${model} (not installed) - Embedding model`);
+          }
+        });
+      } else {
+        // Add detected embedding models
+        embeddingModels.forEach(model => {
+          const isQwen = model.name.toLowerCase().includes('qwen');
+          const context = isQwen ? '32K context' : 'Standard context';
+          dropdown.addOption(model.name, `✅ ${model.name} (${model.size}) - ${context}`);
+        });
+        
+        // Also add any non-embedding models in case user wants to use them
+        const otherModels = models.filter(m => !embeddingModels.includes(m));
+        if (otherModels.length > 0) {
+          otherModels.forEach(model => {
+            dropdown.addOption(model.name, `${model.name} (${model.size}) - General model`);
+          });
+        }
+      }
+      
+      // Set current value or first available embedding model
+      const currentModel = this.plugin.settings.rag.embeddings.model;
+      const availableModel = models.find(m => m.name === currentModel || m.name.includes(currentModel));
+      
+      if (availableModel) {
+        dropdown.setValue(availableModel.name);
+      } else if (embeddingModels.length > 0) {
+        dropdown.setValue(embeddingModels[0].name);
+        // Update settings with first available embedding model
+        this.plugin.settings.rag.embeddings.model = embeddingModels[0].name;
+        await this.plugin.saveSettings();
+      } else if (models.length > 0) {
+        // No embedding models, use first available model
+        dropdown.setValue(models[0].name);
+        this.plugin.settings.rag.embeddings.model = models[0].name;
+        await this.plugin.saveSettings();
+      }
+      
+      // Add change handler
+      dropdown.onChange(async (value: string) => {
+        this.plugin.settings.rag.embeddings.model = value;
+        await this.plugin.saveSettings();
+        
+        // Update recommendations for all related settings
+        this.updateEmbeddingRecommendations(value);
+      });
+      
+    } catch (error) {
+      console.error('Failed to load Ollama embedding models:', error);
+      dropdown.selectEl.empty();
+      dropdown.addOption('', '❌ Error loading models');
+      dropdown.addOption('nomic-embed-text', 'nomic-embed-text (fallback)');
+      dropdown.setValue(this.plugin.settings.rag.embeddings.model || 'nomic-embed-text');
+    }
   }
 
   /**
@@ -2716,6 +3372,137 @@ pip install piper-tts
           });
       });
   }
+
+  /**
+   * Update embedding recommendations when model selection changes
+   */
+  private updateEmbeddingRecommendations(modelName: string): void {
+    const recommendations = this.getModelRecommendations(modelName);
+    
+    // Update dimensions setting recommendation
+    const dimensionsContainer = (this as any)._dimensionsContainer;
+    if (dimensionsContainer) {
+      this.updateRecommendationDisplay(dimensionsContainer, 'dimensions', recommendations.dimensions);
+    }
+    
+    // Update maxTokens setting recommendation
+    const maxTokensContainer = (this as any)._maxTokensContainer;
+    if (maxTokensContainer) {
+      this.updateRecommendationDisplay(maxTokensContainer, 'maxTokens', recommendations.maxTokens);
+    }
+    
+    // Update chunkSize setting recommendation
+    const chunkSizeContainer = (this as any)._chunkSizeContainer;
+    if (chunkSizeContainer) {
+      this.updateRecommendationDisplay(chunkSizeContainer, 'chunkSize', recommendations.chunkSize);
+    }
+  }
+
+  /**
+   * Get model recommendations based on model name
+   */
+  private getModelRecommendations(modelName: string): {
+    dimensions: number | null;
+    maxTokens: number | null;
+    chunkSize: number | null;
+  } {
+    if (!modelName) {
+      return { dimensions: null, maxTokens: null, chunkSize: null };
+    }
+
+    const nameLower = modelName.toLowerCase();
+    
+    // Qwen models
+    if (nameLower.includes('qwen')) {
+      return {
+        dimensions: 1536,
+        maxTokens: 32768,
+        chunkSize: 8192 // Reasonable chunk size for 32K context
+      };
+    }
+    
+    // Nomic models
+    if (nameLower.includes('nomic')) {
+      return {
+        dimensions: 768,
+        maxTokens: 2048,
+        chunkSize: 1024
+      };
+    }
+    
+    // MxBai models
+    if (nameLower.includes('mxbai')) {
+      return {
+        dimensions: 1024,
+        maxTokens: 512,
+        chunkSize: 256
+      };
+    }
+    
+    // BGE models
+    if (nameLower.includes('bge-large')) {
+      return {
+        dimensions: 1024,
+        maxTokens: 512,
+        chunkSize: 256
+      };
+    }
+    
+    if (nameLower.includes('bge-base') || nameLower.includes('bge-small')) {
+      return {
+        dimensions: 768,
+        maxTokens: 512,
+        chunkSize: 256
+      };
+    }
+    
+    // E5 models
+    if (nameLower.includes('e5')) {
+      return {
+        dimensions: 1024,
+        maxTokens: 512,
+        chunkSize: 256
+      };
+    }
+    
+    // All-MiniLM
+    if (nameLower.includes('minilm')) {
+      return {
+        dimensions: 384,
+        maxTokens: 512,
+        chunkSize: 256
+      };
+    }
+    
+    // Default recommendations
+    return {
+      dimensions: 768,
+      maxTokens: 2048,
+      chunkSize: 1024
+    };
+  }
+
+  /**
+   * Update recommendation display for a setting
+   */
+  private updateRecommendationDisplay(containerEl: HTMLElement, settingName: string, recommendedValue: number | null): void {
+    // Find existing recommendation element
+    const existingRec = containerEl.querySelector(`[data-recommendation="${settingName}"]`);
+    if (existingRec) {
+      existingRec.remove();
+    }
+    
+    if (recommendedValue !== null) {
+      // Create new recommendation element
+      const recEl = containerEl.createDiv();
+      recEl.setAttribute('data-recommendation', settingName);
+      recEl.style.fontSize = '0.85em';
+      recEl.style.color = 'var(--text-muted)';
+      recEl.style.fontStyle = 'italic';
+      recEl.style.marginTop = '4px';
+      recEl.textContent = `Recommended: ${recommendedValue}`;
+    }
+  }
 }
 
 /**
@@ -2955,5 +3742,130 @@ export class SettingsManager {
    */
   async getAvailableProviders(settings: ClippySettings): Promise<string[]> {
     return await ProviderFactory.getAvailableProviders(settings);
+  }
+}
+
+/**
+ * Template Editor Modal
+ */
+class TemplateEditorModal extends Modal {
+  plugin: ClippyPlugin;
+  templateType: string;
+  textArea: HTMLTextAreaElement;
+
+  constructor(app: App, plugin: ClippyPlugin, templateType: string) {
+    super(app);
+    this.plugin = plugin;
+    this.templateType = templateType;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    
+    contentEl.createEl('h2', { text: `Edit ${this.templateType} Template` });
+    contentEl.createEl('p', { 
+      text: 'Customize your research note template. Use {{variables}} for dynamic content.',
+      cls: 'setting-item-description'
+    });
+
+    // Template Editor
+    const editorContainer = contentEl.createEl('div', { cls: 'template-editor-container' });
+    editorContainer.style.cssText = 'margin: 16px 0;';
+
+    this.textArea = editorContainer.createEl('textarea', { cls: 'template-editor' });
+    this.textArea.style.cssText = `
+      width: 100%;
+      height: 400px;
+      font-family: var(--font-monospace);
+      font-size: 12px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 4px;
+      padding: 12px;
+      background: var(--background-primary);
+      color: var(--text-normal);
+      resize: vertical;
+    `;
+    
+    // Get current template content asynchronously
+    this.getCurrentTemplate().then(template => {
+      this.textArea.value = template;
+    }).catch(error => {
+      console.error('Failed to load template:', error);
+      this.textArea.value = '// Failed to load template. Please try again.';
+    });
+
+    // Action buttons
+    const buttonContainer = contentEl.createEl('div', { cls: 'template-editor-buttons' });
+    buttonContainer.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;';
+
+    const saveBtn = buttonContainer.createEl('button', { text: 'Save Template', type: 'button', cls: 'mod-cta' });
+    const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel', type: 'button' });
+
+    saveBtn.addEventListener('click', () => {
+      this.saveTemplate();
+      this.close();
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      this.close();
+    });
+  }
+
+  private async getCurrentTemplate(): Promise<string> {
+    const registry = TemplateRegistry.getInstance();
+
+    // Try to get saved template based on the type being edited
+    if (this.plugin.settings.research.templates) {
+      if (this.templateType === 'custom') {
+        // For custom, return the saved research template if it exists
+        return this.plugin.settings.research.templates.research || registry.getTemplateContent('research-standard');
+      } else {
+        // For other template types, try to load their saved version or use registry
+        return this.plugin.settings.research.templates[this.templateType] || registry.getTemplateContent(this.templateType);
+      }
+    }
+
+    // Use template from registry
+    return registry.getTemplateContent(this.templateType);
+  }
+
+
+  private async saveTemplate(): Promise<void> {
+    try {
+      const templateContent = this.textArea.value;
+      
+      // Validate template content is not empty
+      if (!templateContent.trim()) {
+        new Notice('❌ Template cannot be empty');
+        return;
+      }
+
+      // Initialize templates object if it doesn't exist
+      if (!this.plugin.settings.research.templates) {
+        this.plugin.settings.research.templates = {};
+      }
+
+      // Save the template based on the type
+      if (this.templateType === 'custom' || this.templateType === 'research-standard') {
+        // For custom or editing the standard, save as the research template
+        this.plugin.settings.research.templates.research = templateContent;
+      } else {
+        // For other template types, save with their specific key
+        this.plugin.settings.research.templates[this.templateType] = templateContent;
+      }
+
+      // Also update the default template setting to use this template
+      this.plugin.settings.research.defaults.template = 'custom';
+      
+      // Save settings to disk
+      await this.plugin.saveSettings();
+      
+      new Notice('✅ Template saved successfully!');
+      console.log(`Template "${this.templateType}" saved:`, templateContent.substring(0, 100) + '...');
+    } catch (error) {
+      console.error('Failed to save template:', error);
+      new Notice('❌ Failed to save template. Please try again.');
+    }
   }
 }

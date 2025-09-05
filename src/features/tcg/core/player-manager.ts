@@ -631,7 +631,8 @@ export class PlayerManager {
    */
   private getVaultBasedUnoopenedPacks(): PlayerPack[] {
     const packs: PlayerPack[] = [];
-    const allFiles = this.app.vault.getMarkdownFiles();
+    // Focus on tcg/packs directory instead of scanning entire vault
+    const allFiles = this.app.vault.getMarkdownFiles().filter(file => file.path.startsWith('tcg/packs/'));
     
     for (const file of allFiles) {
       try {

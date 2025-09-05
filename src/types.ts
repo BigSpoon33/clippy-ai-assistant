@@ -78,6 +78,10 @@ export interface ClippySettings {
       showThinkingTags: boolean;
       maxTokens: number; // Maximum tokens for AI responses in research generation
     };
+    backlinks: {
+      enabled: boolean;
+      position: 'top' | 'bottom';
+    };
     // Moved to global RAG section
     prompts: {
       wisdomExtraction: string;
@@ -93,6 +97,9 @@ export interface ClippySettings {
       vaultMaintenanceExpert: string;
       commandExecutionExpert: string;
       contextMemoryExpert: string;
+    };
+    templates?: {
+      research?: string;
     };
   };
   voice: {
@@ -483,6 +490,10 @@ export const DEFAULT_SETTINGS: ClippySettings = {
       template: 'research-standard',
       showThinkingTags: false,
       maxTokens: 0, // 0 = unlimited
+    },
+    backlinks: {
+      enabled: true,
+      position: 'bottom',
     },
     // RAG settings moved to centralized rag section
     prompts: {

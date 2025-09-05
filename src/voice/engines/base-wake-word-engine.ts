@@ -39,10 +39,11 @@ export abstract class BaseWakeWordEngine {
         this.eventEmitter = eventEmitter;
         this.logger = console;
         
-        this.threshold = config.wakeWord.threshold;
-        this.models = config.wakeWord.models;
+        this.threshold = config.wakeWordConfig.threshold;
+        this.models = config.wakeWordConfig.models;
         
-        this.initialize();
+        // Don't auto-initialize - let WakeWordManager handle it
+        // this.initialize();
     }
 
     /**
@@ -235,8 +236,8 @@ export abstract class BaseWakeWordEngine {
      */
     public updateConfig(config: VoiceConfiguration): void {
         this.config = config;
-        this.threshold = config.wakeWord.threshold;
-        this.models = config.wakeWord.models;
+        this.threshold = config.wakeWordConfig.threshold;
+        this.models = config.wakeWordConfig.models;
     }
 
     /**

@@ -20,8 +20,10 @@ import { ComprehensiveResearchSystem } from '../research/comprehensive-research-
 import { ClippyErrorBoundaries } from '../utils/error-boundaries';
 import { VaultAgentChatModal } from './vault-agent-chat';
 import { VoiceEnabledVaultChatModal } from './voice-vault-chat';
+import { TemplateSelector } from './components/template-selector';
 import { VIEW_TYPE_VAULT_AGENT } from './vault-agent-sidebar-view';
 import { VIEW_TYPE_RESEARCH_AGENT } from './research-agent-sidebar-view';
+import { VIEW_TYPE_UI_SHOWCASE } from './ui-showcase-view';
 import { SemanticSearchModal } from '../features/search/semantic-search-integration';
 import { IntelligentBacklinkSystem } from '../features/knowledge-management/backlinking/intelligent-backlink-system';
 import { BacklinkSuggestionsModal } from './backlink-suggestions-modal';
@@ -197,6 +199,14 @@ export class CommandHandlers {
       name: 'Show Research Agent Sidebar',
       icon: 'microscope',
       callback: this.handleResearchAgentSidebar.bind(this),
+    });
+
+    // UI Showcase - Design System Demo
+    this.plugin.addCommand({
+      id: 'clippy-ui-showcase',
+      name: 'Open UI Design Showcase',
+      icon: 'palette',
+      callback: this.handleUIShowcase.bind(this),
     });
     
     // Add MoE system commands if enabled
@@ -858,6 +868,22 @@ export class CommandHandlers {
       const modal = new ComprehensiveResearchModal(this.plugin.app, this.plugin.settings, async (checklist, options) => {
         const researchSystem = new ComprehensiveResearchSystem(this.plugin.app, this.plugin);
         
+        // Check if the research agent sidebar has showcase mode enabled
+        const researchView = this.plugin.app.workspace.getLeavesOfType('research-agent-sidebar')[0];
+        if (researchView && (researchView.view as any).researchSystem) {
+          const sidebarResearchSystem = (researchView.view as any).researchSystem;
+          const showcaseStatus = sidebarResearchSystem.getShowcaseStatus();
+          
+          if (showcaseStatus.enabled) {
+            console.log('🎭 Applying showcase mode from sidebar to new research project');
+            researchSystem.enableShowcaseMode({
+              templateVariables: true,
+              includeRealData: true,
+              mockDataSample: "Sample AI-generated content for framework testing"
+            });
+          }
+        }
+        
         // Configure with settings
         const searchConfig = this.plugin.settings.research.searchEngine;
         const researchOptions = {
@@ -1049,6 +1075,39 @@ export class CommandHandlers {
     } catch (error) {
       console.error('CLIPPY: Error opening research agent sidebar:', error);
       new Notice(`Failed to open research agent sidebar: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle UI showcase command
+   */
+  async handleUIShowcase(): Promise<void> {
+    try {
+      // Check if showcase view is already open
+      const existingLeaf = this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE_UI_SHOWCASE).first();
+      
+      if (existingLeaf) {
+        // Reveal existing view
+        this.plugin.app.workspace.revealLeaf(existingLeaf);
+        return;
+      }
+
+      // Open new showcase view in right sidebar
+      const leaf = this.plugin.app.workspace.getRightLeaf(false);
+      if (leaf) {
+        await leaf.setViewState({
+          type: VIEW_TYPE_UI_SHOWCASE,
+          active: true
+        });
+        
+        // Reveal the sidebar
+        this.plugin.app.workspace.revealLeaf(leaf);
+        new Notice('🎨 UI Design Showcase opened');
+      }
+
+    } catch (error) {
+      console.error('CLIPPY: Error opening UI showcase:', error);
+      new Notice(`Failed to open UI showcase: ${error.message}`);
     }
   }
 
@@ -1269,9 +1328,9 @@ class ComprehensiveResearchModal extends Modal {
       'Enhance notes using AI for final polish'
     ];
     
-    steps.forEach(step => {
+    steps.forEach((step, index) => {
       const li = processList.createEl('li');
-      li.textContent = step;
+      li.textContent = `${index + 1}. ${step}`;
       li.style.marginBottom = '4px';
     });
 
@@ -1279,8 +1338,28 @@ class ComprehensiveResearchModal extends Modal {
     const form = contentEl.createEl('form');
     form.style.cssText = 'display: flex; flex-direction: column; gap: 16px;';
 
-    // Checklist input
-    const textareaEl = form.createEl('textarea', { 
+    // Research Project Title
+    const projectTitleEl = form.createEl('div', { cls: 'form-group' });
+    projectTitleEl.createEl('h3', { text: 'Research Project Title' });
+    const projectTitleInput = projectTitleEl.createEl('input', { 
+      type: 'text', 
+      placeholder: 'Enter research project name...',
+      cls: 'project-title-input'
+    });
+    projectTitleInput.style.cssText = `
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--background-modifier-border);
+      border-radius: 6px;
+      background: var(--background-primary);
+      color: var(--text-normal);
+      font-size: 14px;
+    `;
+
+    // Research Topics
+    const topicsEl = form.createEl('div', { cls: 'form-group' });
+    topicsEl.createEl('h3', { text: 'Research Topics' });
+    const textareaEl = topicsEl.createEl('textarea', { 
       placeholder: 'Enter research topics (one per line)...\n\nExample:\nTurmeric\nGinger\nAshwagandha\nCurcumin benefits\nNatural anti-inflammatory herbs',
       cls: 'comprehensive-research-input'
     });
@@ -1358,75 +1437,32 @@ class ComprehensiveResearchModal extends Modal {
     maxResultsInput.max = '20';
     maxResultsInput.style.cssText = 'width: 100px; padding: 4px; margin-top: 4px;';
 
-    // Custom template option
+    // Template selection using centralized component
     const templateEl = advancedEl.createEl('div', { cls: 'option-group' });
     templateEl.style.marginTop = '16px';
-    templateEl.createEl('label', { text: 'Custom Template (optional):' });
-    const templateHelp = templateEl.createEl('div', { cls: 'template-help' });
-    templateHelp.style.cssText = 'font-size: 12px; color: var(--text-muted); margin: 4px 0;';
-    templateHelp.innerHTML = `
-      <strong>Available variables:</strong> {{title}}, {{today}}, {{research.status}}, {{vault.references}}, {{web.sources}}, {{overview}}, {{definitions}}, {{facts}}, {{uses}}, {{warnings}}, {{research}}, {{concepts}}, {{sources}}, {{wisdom}}
-    `;
     
-    const templateInput = templateEl.createEl('textarea', { 
-      placeholder: `Leave empty to use default template, or enter custom template with variables:
-
----
-title: {{title}}
-created: {{today}}
-tags:
-  - research
-  - "{{title}}"
----
-
-# {{title}}
-
-## Research Status
-{{research.status}}
-
-## Overview
-{{overview}}
-
-## Vault Notes
-{{vault.references}}
-
-## Web Sources  
-{{web.sources}}
-
-## Key Information
-{{facts}}
-
-## Sources
-{{sources}}`,
-      cls: 'custom-template-input'
+    const templateSelector = new TemplateSelector(this.app, {
+      includeCustomOption: true,
+      defaultTemplate: 'research-standard',
+      containerClass: 'modal-template-selector'
     });
-    templateInput.style.cssText = `
-      width: 100%;
-      min-height: 150px;
-      padding: 8px;
-      border: 1px solid var(--background-modifier-border);
-      border-radius: 4px;
-      background: var(--background-primary);
-      color: var(--text-normal);
-      font-family: var(--font-monospace);
-      font-size: 12px;
-      resize: vertical;
-      margin-top: 4px;
-    `;
+    
+    const templateControls = templateSelector.createTemplateSelector(templateEl);
 
-    // Add file selector for template
-    const templateControls = templateEl.createEl('div', { cls: 'template-controls' });
-    templateControls.style.cssText = 'display: flex; gap: 8px; margin-top: 8px; align-items: center;';
+    // Add file selector for template (OLD CODE - DISABLED)
+    // const templateControlsOLD = templateEl.createEl('div', { cls: 'template-controls' });
+    // templateControls.style.cssText = 'display: flex; gap: 8px; margin-top: 8px; align-items: center;';
     
-    const loadTemplateBtn = templateControls.createEl('button', {
-      text: '📁 Load Template from Vault',
-      type: 'button'
-    });
-    loadTemplateBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+    // const loadTemplateBtn = templateControls.createEl('button', {
+    //   text: '📁 Load Template from Vault',
+    //   type: 'button'
+    // });
+    // loadTemplateBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
     
-    const templateFileSpan = templateControls.createEl('span', { cls: 'template-file-name' });
-    templateFileSpan.style.cssText = 'font-size: 12px; color: var(--text-muted);';
+    // const templateFileSpan = templateControls.createEl('span', { cls: 'template-file-name' });
+    // templateFileSpan.style.cssText = 'font-size: 12px; color: var(--text-muted);';
     
+    /* OLD TEMPLATE CODE - COMMENTED OUT
     loadTemplateBtn.addEventListener('click', async () => {
       const markdownFiles = this.app.vault.getMarkdownFiles();
       const templateFiles = markdownFiles.filter(file => 
@@ -1485,6 +1521,7 @@ tags:
       
       fileModal.open();
     });
+    */ // END OLD TEMPLATE CODE
 
     // Buttons
     const buttonContainer = form.createEl('div', { cls: 'button-container' });
@@ -1527,18 +1564,22 @@ tags:
         return;
       }
 
+      // Get template from centralized selector
+      const selectedTemplate = templateControls.getSelectedTemplate();
+      const customTemplate = selectedTemplate.isCustom ? selectedTemplate.content.trim() : null;
+      
       // Prepare options
-      const customTemplate = templateInput.value.trim();
       const options = {
-        outputFolder: folderInput.value || 'Comprehensive Research',
+        outputFolder: folderInput.value || 'Generated Research Notes',
         enableWebSearch: webSearchInput.checked,
         saveIndividualPages: saveIndividualPagesInput.checked,
         searchVaultExactWords: vaultSearchInput.checked,
         enableSemanticSearch: semanticSearchInput.checked,
         aiEnhanceFinalNote: aiEnhanceInput.checked,
         maxWebSearchResults: parseInt(maxResultsInput.value) || 10,
-        customTemplate: customTemplate || null,
-        projectName: `Comprehensive Research: ${new Date().toLocaleDateString()}`,
+        customTemplate: customTemplate,
+        selectedTemplate: selectedTemplate.name,
+        projectName: projectTitleInput.value.trim() || `Research Project: ${new Date().toLocaleDateString()}`,
         projectDescription: `Systematic research with vault analysis and web search for ${items.length} topics`
       };
 

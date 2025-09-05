@@ -9,6 +9,8 @@ import { ComprehensiveResearchSystem } from '../research/comprehensive-research-
 import { ProjectTracker, ResearchProject, ChecklistItem, GeneratedNoteInfo, ResearchSettings } from '../research/project-tracker';
 import { NoteStatusMonitor } from '../research/note-status-monitor';
 import { AutomatedNoteGenerator } from '../research/automated-note-generator';
+import { ProjectSettingsView, PROJECT_SETTINGS_VIEW_TYPE } from './project-settings-view';
+import { ResearchTopicProgressTracker, TopicProgress } from './components/research-topic-progress';
 
 export const VIEW_TYPE_RESEARCH_AGENT = 'clippy-research-agent-view';
 
@@ -24,6 +26,8 @@ export class ResearchAgentSidebarView extends ItemView {
     private runningResearch: Set<string> = new Set(); // Track which projects are currently running research
     private recentlyToggled: Set<string> = new Set(); // Track recently toggled projects to prevent immediate auto-research
     private recentlyCompleted: Set<string> = new Set(); // Track recently completed research to prevent immediate restart
+    private topicProgressTracker: ResearchTopicProgressTracker | null = null;
+    private progressCallback: ((progress: TopicProgress) => void) | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: ClippyPlugin) {
         super(leaf);
@@ -47,11 +51,13 @@ export class ResearchAgentSidebarView extends ItemView {
         await this.initializeComponents();
         this.render();
         this.startRealTimeUpdates();
+        this.setupTopicProgressTracking();
     }
 
     async onClose(): Promise<void> {
         console.log('🔬 Research Agent Sidebar: Closing view');
         this.stopRealTimeUpdates();
+        this.cleanupTopicProgressTracking();
     }
 
     /**
@@ -80,23 +86,16 @@ export class ResearchAgentSidebarView extends ItemView {
     private startRealTimeUpdates(): void {
         if (this.updateInterval) return;
 
-        // Update every 1 second for responsive UI during research
+        // Minimal polling since progress tracker now provides real-time updates via callbacks
         this.updateInterval = window.setInterval(() => {
             if (this.isInitialized) {
-                const hasRunningResearch = this.runningResearch.size > 0;
-                if (hasRunningResearch) {
-                    // During active research, use full re-render to catch all status changes
-                    console.log(`🔄 UI refresh during research (${this.runningResearch.size} active)`);
-                    this.render();
-                } else {
-                    // Normal refresh when no active research
-                    this.refreshActiveProjects();
-                }
+                // Only check for new auto-research opportunities periodically
+                // Progress updates are handled by the callback system now
                 this.checkForActiveResearch();
             }
-        }, 1000); // Always 1 second for responsive updates
+        }, 10000); // 10 seconds - only for auto-research detection
 
-        console.log('🔄 Research Agent Sidebar: Started real-time updates (2s interval)');
+        console.log('🔄 Research Agent Sidebar: Started periodic updates (10s interval for auto-research only)');
     }
 
     /**
@@ -188,8 +187,7 @@ export class ResearchAgentSidebarView extends ItemView {
                     researchOptions,
                     (progress) => {
                         console.log(`Auto-research progress: ${progress.percentage}% - ${progress.message}`);
-                        // Trigger UI refresh when progress updates
-                        this.refreshActiveProjects();
+                        // Progress updates are now handled by the progress tracker callback system
                     }
                 ).then(() => {
                     console.log(`✅ Auto-research completed for project: ${project.name}`);
@@ -201,6 +199,7 @@ export class ResearchAgentSidebarView extends ItemView {
                         this.recentlyCompleted.delete(project.id);
                     }, 30000); // 30 second cooldown after completion
                     
+                    // Final refresh only when research is complete
                     this.refreshActiveProjects();
                 }).catch((error) => {
                     console.error(`❌ Auto-research failed for project ${project.name}:`, error);
@@ -259,6 +258,34 @@ export class ResearchAgentSidebarView extends ItemView {
         settingsBtn.addEventListener('click', () => {
             // TODO: Open research settings
             new Notice('Research settings coming soon!');
+        });
+
+        // Showcase Mode toggle button
+        const showcaseBtn = header.createEl('button', {
+            cls: 'research-showcase-btn',
+            title: 'Toggle Showcase Mode (Framework Testing)'
+        });
+        const updateShowcaseButton = () => {
+            const status = this.researchSystem.getShowcaseStatus();
+            showcaseBtn.innerHTML = status.enabled ? '🎭' : '🔬';
+            showcaseBtn.style.background = status.enabled ? 'var(--color-accent)' : '';
+        };
+        updateShowcaseButton();
+        
+        showcaseBtn.addEventListener('click', () => {
+            const status = this.researchSystem.getShowcaseStatus();
+            if (status.enabled) {
+                this.researchSystem.disableShowcaseMode();
+                new Notice('🔬 Production Mode: Full AI research workflow');
+            } else {
+                this.researchSystem.enableShowcaseMode({
+                    templateVariables: true,
+                    includeRealData: true,
+                    mockDataSample: "Sample AI-generated content for framework testing"
+                });
+                new Notice('🎭 Showcase Mode: Framework testing with template variables');
+            }
+            updateShowcaseButton();
         });
     }
 
@@ -356,14 +383,11 @@ export class ResearchAgentSidebarView extends ItemView {
         const statusEmoji = projectHeader.createSpan({ cls: 'project-status-emoji' });
         statusEmoji.textContent = this.getProjectStatusEmoji(project);
         
-        const projectTitle = projectHeader.createSpan({ cls: 'project-title' });
-        projectTitle.textContent = project.name;
-        projectTitle.style.userSelect = 'text';
-        
         // Play/pause button (don't show for archived or 100% completed projects)
+        // Move this right after status emoji, before project title
         const isFullyCompleted = project.progress.completed === project.progress.total && project.progress.total > 0;
         if (project.status !== 'archived' && !isFullyCompleted) {
-            const playPauseBtn = projectHeader.createEl('button', { cls: 'project-play-pause-btn' });
+            const playPauseBtn = projectHeader.createEl('button', { cls: 'project-play-pause-btn left-positioned' });
             playPauseBtn.textContent = project.status === 'processing' ? '⏸️' : '▶️';
             playPauseBtn.title = project.status === 'processing' ? 'Pause project' : 
                                 project.status === 'paused' ? 'Resume project' : 
@@ -383,6 +407,68 @@ export class ResearchAgentSidebarView extends ItemView {
                 this.toggleProjectStatus(project);
             };
         }
+        
+        const projectTitle = projectHeader.createSpan({ cls: 'project-title' });
+        projectTitle.textContent = project.name;
+        projectTitle.style.userSelect = 'text';
+        
+        // Project action buttons section
+        const projectActionsSection = projectHeader.createDiv({ cls: 'project-actions-section' });
+        
+        // Cards button
+        const projectCardsBtn = projectActionsSection.createEl('button', {
+            cls: 'project-action-btn cards-btn',
+            text: '🗃️',
+            attr: { title: 'View project cards' }
+        });
+        projectCardsBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleProjectCardsAction(project);
+        };
+        
+        // Quiz button
+        const projectQuizBtn = projectActionsSection.createEl('button', {
+            cls: 'project-action-btn quiz-btn',
+            text: '📝',
+            attr: { title: 'Take project quiz' }
+        });
+        projectQuizBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleProjectQuizAction(project);
+        };
+        
+        // Conversation button
+        const projectConversationBtn = projectActionsSection.createEl('button', {
+            cls: 'project-action-btn conversation-btn',
+            text: '🔊',
+            attr: { title: 'Start project conversation' }
+        });
+        projectConversationBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleProjectConversationAction(project);
+        };
+        
+        // Refresh button
+        const projectRefreshBtn = projectActionsSection.createEl('button', {
+            cls: 'project-utility-btn refresh-btn',
+            text: '🔃',
+            attr: { title: 'Refresh project' }
+        });
+        projectRefreshBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleProjectRefreshAction(project);
+        };
+        
+        // Trash button
+        const projectTrashBtn = projectActionsSection.createEl('button', {
+            cls: 'project-utility-btn trash-btn',
+            text: '🗑️',
+            attr: { title: 'Delete project' }
+        });
+        projectTrashBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleProjectTrashAction(project);
+        };
         
         // Context menu button
         const menuBtn = projectHeader.createEl('button', { cls: 'project-menu-btn', text: '⋮' });
@@ -419,12 +505,120 @@ export class ResearchAgentSidebarView extends ItemView {
             });
         }
 
-        // Add topic button
-        const addTopicBtn = projectDetails.createEl('button', { cls: 'add-topic-btn' });
-        addTopicBtn.textContent = '+ Add Topic';
-        addTopicBtn.addEventListener('click', (e) => {
+        // Project tab view container
+        const projectTabContainer = projectDetails.createDiv({ cls: 'project-tab-container' });
+        
+        // Tab navigation
+        const tabNavigation = projectTabContainer.createDiv({ cls: 'project-tab-nav' });
+        
+        // Add Topic tab
+        const addTopicTab = tabNavigation.createEl('button', { 
+            cls: 'project-tab-btn active',
+            attr: { 'data-tab': 'add-topic' }
+        });
+        addTopicTab.textContent = '+ Add Topic';
+        
+        // Project Settings tab
+        const settingsTab = tabNavigation.createEl('button', { 
+            cls: 'project-tab-btn',
+            attr: { 'data-tab': 'settings' }
+        });
+        settingsTab.textContent = '⚙️ Settings';
+        
+        // Tab content container
+        const tabContentContainer = projectTabContainer.createDiv({ cls: 'project-tab-content' });
+        
+        // Add Topic content (default visible)
+        const addTopicContent = tabContentContainer.createDiv({ 
+            cls: 'project-tab-panel active',
+            attr: { 'data-panel': 'add-topic' }
+        });
+        
+        // Add topics form
+        const addTopicsForm = addTopicContent.createEl('form', { cls: 'add-topics-form' });
+        
+        // Topics textarea
+        const topicsLabel = addTopicsForm.createEl('label', { 
+            text: 'Enter topics, one per line:',
+            cls: 'topics-label' 
+        });
+        const topicsTextarea = addTopicsForm.createEl('textarea', {
+            cls: 'topics-textarea',
+            attr: { 
+                placeholder: 'Topic 1\nTopic 2\nTopic 3...',
+                rows: '4'
+            }
+        });
+        
+        // Add topics button
+        const addTopicsBtn = addTopicsForm.createEl('button', { 
+            cls: 'add-topics-submit-btn',
+            text: '+ Add Topics',
+            type: 'button'
+        });
+        
+        addTopicsBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
-            this.showAddTopicModal(project);
+            
+            const topicsText = topicsTextarea.value.trim();
+            if (!topicsText) {
+                new Notice('Please enter at least one topic');
+                return;
+            }
+            
+            const topics = topicsText.split('\n').filter(t => t.trim()).map(t => t.trim());
+            if (topics.length > 0) {
+                try {
+                    await this.addTopicsToProject(project, topics);
+                    new Notice(`✅ Added ${topics.length} topics to ${project.name}`);
+                    topicsTextarea.value = ''; // Clear the textarea
+                    this.refreshActiveProjects(); // Refresh to show new topics
+                } catch (error) {
+                    console.error('Error adding topics:', error);
+                    new Notice('❌ Failed to add topics');
+                }
+            }
+        });
+        
+        // Project Settings content (initially hidden)
+        const settingsContent = tabContentContainer.createDiv({ 
+            cls: 'project-tab-panel',
+            attr: { 'data-panel': 'settings' }
+        });
+        
+        // We'll populate settings content inline instead of opening a separate view
+        this.renderInlineProjectSettings(settingsContent, project);
+        
+        // Tab switching logic
+        const switchTab = (activeTabName: string) => {
+            // Update tab buttons
+            tabNavigation.querySelectorAll('.project-tab-btn').forEach(tab => {
+                if (tab.getAttribute('data-tab') === activeTabName) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            
+            // Update tab panels
+            tabContentContainer.querySelectorAll('.project-tab-panel').forEach(panel => {
+                if (panel.getAttribute('data-panel') === activeTabName) {
+                    panel.classList.add('active');
+                } else {
+                    panel.classList.remove('active');
+                }
+            });
+        };
+        
+        // Add click handlers for tabs
+        addTopicTab.addEventListener('click', (e) => {
+            e.stopPropagation();
+            switchTab('add-topic');
+        });
+        
+        settingsTab.addEventListener('click', (e) => {
+            e.stopPropagation();
+            switchTab('settings');
         });
 
         // Collapse/expand functionality
@@ -454,21 +648,85 @@ export class ResearchAgentSidebarView extends ItemView {
     private renderChecklistItem(container: HTMLElement, item: ChecklistItem): void {
         const itemEl = container.createDiv({ cls: `checklist-item ${item.status}` });
         
-        const itemIcon = itemEl.createSpan({ cls: 'item-icon' });
+        // Left section with status icon and name
+        const leftSection = itemEl.createDiv({ cls: 'item-left-section' });
+        
+        const itemIcon = leftSection.createSpan({ cls: 'item-icon' });
         // Calculate progress for processing items
         const progressPercentage = item.status === 'processing' ? this.estimateItemProgress(item) : undefined;
         itemIcon.textContent = this.getItemStatusIcon(item.status, progressPercentage);
         
-        const itemName = itemEl.createSpan({ cls: 'item-name' });
+        const itemName = leftSection.createSpan({ cls: 'item-name' });
         itemName.textContent = item.name;
+        
+        // Center section with action buttons
+        const centerSection = itemEl.createDiv({ cls: 'item-center-section' });
+        
+        // Cards button
+        const cardsBtn = centerSection.createEl('button', {
+            cls: 'item-action-btn cards-btn',
+            text: '🗃️',
+            attr: { title: 'View cards' }
+        });
+        cardsBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleCardsAction(item);
+        };
+        
+        // Quiz button
+        const quizBtn = centerSection.createEl('button', {
+            cls: 'item-action-btn quiz-btn',
+            text: '📝',
+            attr: { title: 'Take quiz' }
+        });
+        quizBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleQuizAction(item);
+        };
+        
+        // Conversation button
+        const conversationBtn = centerSection.createEl('button', {
+            cls: 'item-action-btn conversation-btn',
+            text: '🔊',
+            attr: { title: 'Start conversation' }
+        });
+        conversationBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleConversationAction(item);
+        };
+        
+        // Right section with utility buttons
+        const rightSection = itemEl.createDiv({ cls: 'item-right-section' });
+        
+        // Refresh button
+        const refreshBtn = rightSection.createEl('button', {
+            cls: 'item-utility-btn refresh-btn',
+            text: '🔃',
+            attr: { title: 'Refresh topic' }
+        });
+        refreshBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleRefreshAction(item);
+        };
+        
+        // Trashcan button
+        const trashBtn = rightSection.createEl('button', {
+            cls: 'item-utility-btn trash-btn',
+            text: '🗑️',
+            attr: { title: 'Delete topic' }
+        });
+        trashBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.handleTrashAction(item);
+        };
         
         // Click to open research note if available  
         // Check both noteId and if file exists based on standard naming convention
         if (item.status === 'completed') {
             const project = this.getCurrentProject(item);
             if (project && (item.noteId || this.findResearchNoteForItem(project, item))) {
-                itemEl.addClass('clickable');
-                itemEl.addEventListener('click', () => {
+                leftSection.addClass('clickable');
+                leftSection.addEventListener('click', () => {
                     const notePath = item.noteId || this.getStandardNotePath(project, item);
                     this.openResearchNote(notePath);
                 });
@@ -511,7 +769,7 @@ export class ResearchAgentSidebarView extends ItemView {
             text: '📋 Templates'
         });
         templatesBtn.addEventListener('click', () => {
-            new Notice('Research templates coming soon!');
+            this.openTemplateManager();
         });
 
         const suggestBtn = secondaryActions.createEl('button', {
@@ -997,7 +1255,7 @@ export class ResearchAgentSidebarView extends ItemView {
             item.setTitle('Project Settings')
                 .setIcon('settings')
                 .onClick(() => {
-                    this.showProjectSettingsModal(project);
+                    this.showProjectSettings(project);
                 });
         });
 
@@ -1164,13 +1422,28 @@ export class ResearchAgentSidebarView extends ItemView {
     }
 
     /**
-     * Show project settings modal (identical to comprehensive research command interface)
+     * Show project settings in dedicated view (replaces modal)
      */
-    private showProjectSettingsModal(project: ResearchProject): void {
-        // Capture reference to the sidebar view for use in modal
-        const sidebarView = this;
+    private showProjectSettings(project: ResearchProject): void {
+        const leaf = this.app.workspace.getLeaf('split', 'vertical');
+        const settingsView = new ProjectSettingsView(
+            leaf, 
+            this.plugin, 
+            project,
+            () => {
+                // Back button callback - return to research agent view
+                leaf.detach();
+                this.render(); // Refresh the main view to show any changes
+            }
+        );
         
-        // Create Obsidian modal
+        leaf.open(settingsView);
+    }
+
+    /**
+     * Start comprehensive research for a project with progress tracking
+     */
+    private async startProjectResearch(project: ResearchProject): Promise<void> {
         const modal = new class extends Modal {
             constructor(app: any, project: ResearchProject, projectTracker: any, onComplete: () => void) {
                 super(app);
@@ -1548,103 +1821,6 @@ tags: [research, {{title}}]
         modal.open();
     }
 
-    /**
-     * Start research for a specific project (used by manual play/pause)
-     */
-    private async startProjectResearch(project: ResearchProject): Promise<void> {
-        try {
-            // Check if there are unfinished items
-            const unfinishedItems = project.checklist.filter(item => 
-                item.status === 'pending' || item.status === 'failed'
-            );
-
-            if (unfinishedItems.length === 0) {
-                new Notice('All topics in this project have been completed');
-                return;
-            }
-
-            // Check if we're already running research for this project
-            if (this.runningResearch.has(project.id)) {
-                console.log(`🔄 Research already running for project: ${project.name}`);
-                return;
-            }
-
-            console.log(`🔍 Starting research for project: ${project.name} (${unfinishedItems.length} unfinished items)`);
-            
-            // Mark as running to prevent auto-research interference
-            this.runningResearch.add(project.id);
-            console.log(`🔒 DEBUG: Marked project as running research: ${project.name}`);
-            
-            // Mark as recently toggled to prevent immediate auto-research interference
-            this.recentlyToggled.add(project.id);
-            setTimeout(() => {
-                this.recentlyToggled.delete(project.id);
-            }, 10000); // Longer timeout for manual research
-
-            const researchOptions = {
-                enableWebSearch: project.settings.enableWebSearch,
-                saveIndividualPages: project.settings.saveIndividualPages,
-                searchVaultExactWords: project.settings.searchVaultExactWords,
-                enableSemanticSearch: project.settings.enableSemanticSearch,
-                aiEnhanceFinalNote: project.settings.aiEnhanceFinalNote,
-                maxWebSearchResults: project.settings.maxWebSearchResults,
-                outputFolder: project.settings.outputFolder,
-                customTemplate: project.settings.customTemplate
-            };
-
-            // Run research in background without blocking UI
-            this.researchSystem.continueProjectResearch(
-                project.id,
-                researchOptions,
-                (progress) => {
-                    console.log(`Manual research progress: ${progress.percentage}% - ${progress.message}`);
-                    // Trigger immediate UI refresh when progress updates
-                    this.render(); // Full re-render to ensure fresh data
-                }
-            ).then(async () => {
-                console.log(`✅ Manual research completed for project: ${project.name}`);
-                this.runningResearch.delete(project.id);
-                console.log(`🔓 DEBUG: Cleared running research flag: ${project.name}`);
-                
-                // Check if all topics are now complete, if so mark project as completed
-                const updatedProject = this.projectTracker.getProject(project.id);
-                const unfinishedItems = updatedProject?.checklist.filter(item => 
-                    item.status === 'pending' || item.status === 'failed'
-                ) || [];
-                
-                if (unfinishedItems.length === 0) {
-                    // All topics complete - mark project as completed
-                    const proj = this.projectTracker.getProject(project.id);
-                    if (proj) {
-                        proj.status = 'completed';
-                        await this.projectTracker.saveProjects();
-                    }
-                    console.log(`🎉 Project fully completed: ${project.name}`);
-                } else {
-                    // Still has unfinished topics - pause so user can choose to continue
-                    await this.projectTracker.pauseProject(project.id);
-                    console.log(`⏸️ Project paused with ${unfinishedItems.length} unfinished items: ${project.name}`);
-                }
-                
-                // Mark as recently completed to prevent immediate auto-research restart
-                this.recentlyCompleted.add(project.id);
-                setTimeout(() => {
-                    this.recentlyCompleted.delete(project.id);
-                }, 30000); // 30 second cooldown after completion
-                
-                this.render(); // Force full re-render to show updated statuses
-            }).catch((error) => {
-                console.error(`❌ Manual research failed for project ${project.name}:`, error);
-                this.runningResearch.delete(project.id);
-                this.render(); // Force full re-render even on error
-            });
-            
-        } catch (error) {
-            console.error('Error starting project research:', error);
-            this.runningResearch.delete(project.id);
-            new Notice('Failed to start project research');
-        }
-    }
 
     /**
      * Restart research for completed projects with unfinished topics
@@ -1686,8 +1862,7 @@ tags: [research, {{title}}]
                     researchOptions,
                     (progress) => {
                         console.log(`Research progress: ${progress.percentage}% - ${progress.message}`);
-                        // Trigger UI refresh when progress updates
-                        this.refreshActiveProjects();
+                        // Progress updates are now handled by the progress tracker callback system
                     }
                 );
 
@@ -1948,5 +2123,801 @@ tags: [research, {{title}}]
             }
         }
         return undefined;
+    }
+
+    /**
+     * Setup topic progress tracking
+     */
+    private setupTopicProgressTracking(): void {
+        if (this.topicProgressTracker) {
+            this.topicProgressTracker.clearAll();
+        }
+
+        // Create progress tracker container
+        const progressContainer = this.containerEl.createEl('div', {
+            cls: 'research-topic-progress-container'
+        });
+        progressContainer.style.cssText = `
+            position: sticky;
+            top: 0;
+            background: var(--background-primary);
+            z-index: 10;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--background-modifier-border);
+            margin-bottom: 8px;
+        `;
+
+        // Initialize progress tracker
+        this.topicProgressTracker = new ResearchTopicProgressTracker(progressContainer);
+
+        // Register progress callback with research system
+        if (this.researchSystem) {
+            this.progressCallback = (progress: TopicProgress) => {
+                if (this.topicProgressTracker) {
+                    this.topicProgressTracker.updateProgress(progress);
+                }
+            };
+            // Check if onProgressUpdate method exists before calling
+            if (typeof this.researchSystem.onProgressUpdate === 'function') {
+                this.researchSystem.onProgressUpdate(this.progressCallback);
+            } else {
+                console.log('🔬 Research system does not support progress callbacks');
+            }
+        }
+
+        console.log('✅ Topic progress tracking setup complete');
+    }
+
+    /**
+     * Cleanup topic progress tracking
+     */
+    private cleanupTopicProgressTracking(): void {
+        if (this.topicProgressTracker) {
+            this.topicProgressTracker.clearAll();
+            this.topicProgressTracker = null;
+        }
+
+        // Remove progress callback
+        if (this.researchSystem && this.progressCallback) {
+            // Check if offProgressUpdate method exists before calling
+            if (typeof this.researchSystem.offProgressUpdate === 'function') {
+                this.researchSystem.offProgressUpdate(this.progressCallback);
+            }
+            this.progressCallback = null;
+        }
+
+        console.log('🧹 Topic progress tracking cleanup complete');
+    }
+
+    /**
+     * Placeholder handler methods for research topic action buttons
+     */
+    private handleCardsAction(item: ChecklistItem): void {
+        console.log(`🗃️ Cards action triggered for topic: ${item.name}`);
+        new Notice(`🗃️ Cards feature coming soon for: ${item.name}`);
+        // TODO: Implement cards functionality
+    }
+
+    private handleQuizAction(item: ChecklistItem): void {
+        console.log(`📝 Quiz action triggered for topic: ${item.name}`);
+        new Notice(`📝 Quiz feature coming soon for: ${item.name}`);
+        // TODO: Implement quiz functionality
+    }
+
+    private handleConversationAction(item: ChecklistItem): void {
+        console.log(`🔊 Conversation action triggered for topic: ${item.name}`);
+        new Notice(`🔊 Conversation feature coming soon for: ${item.name}`);
+        // TODO: Implement conversation functionality
+    }
+
+    private handleRefreshAction(item: ChecklistItem): void {
+        console.log(`🔃 Refresh action triggered for topic: ${item.name}`);
+        new Notice(`🔃 Refreshing topic: ${item.name}`);
+        // TODO: Implement refresh functionality
+        // This could trigger re-research or data refresh for the topic
+    }
+
+    private handleTrashAction(item: ChecklistItem): void {
+        console.log(`🗑️ Trash action triggered for topic: ${item.name}`);
+        this.showDeleteTopicConfirmation(item);
+    }
+
+    /**
+     * Show fun delete confirmation modal with keep/delete files toggle
+     */
+    private showDeleteTopicConfirmation(item: ChecklistItem): void {
+        const modal = new Modal(this.app);
+        modal.modalEl.addClass('delete-topic-modal');
+
+        // Modal content
+        const content = modal.contentEl;
+        content.empty();
+
+        // Header with emoji and title
+        const header = content.createDiv({ cls: 'delete-modal-header' });
+        header.createDiv({ cls: 'delete-modal-emoji', text: '🗑️' });
+        header.createEl('h2', { 
+            cls: 'delete-modal-title',
+            text: `Delete Research Topic?` 
+        });
+        header.createDiv({ 
+            cls: 'delete-modal-subtitle',
+            text: `"${item.name}"` 
+        });
+
+        // Fun toggle section for files
+        const toggleSection = content.createDiv({ cls: 'file-action-toggle-section' });
+        
+        const toggleLabel = toggleSection.createDiv({ 
+            cls: 'toggle-label',
+            text: '📄 What should we do with the research files?' 
+        });
+
+        const toggleContainer = toggleSection.createDiv({ cls: 'fun-toggle-container' });
+        
+        // Keep files option (left side)
+        const keepOption = toggleContainer.createDiv({ cls: 'toggle-option keep-option active' });
+        keepOption.createDiv({ cls: 'toggle-emoji', text: '💾' });
+        keepOption.createDiv({ cls: 'toggle-text', text: 'Keep Files' });
+        keepOption.createDiv({ cls: 'toggle-subtext', text: 'Files stay safe!' });
+
+        // Delete files option (right side)
+        const deleteOption = toggleContainer.createDiv({ cls: 'toggle-option delete-option' });
+        deleteOption.createDiv({ cls: 'toggle-emoji', text: '🔥' });
+        deleteOption.createDiv({ cls: 'toggle-text', text: 'Delete Files' });
+        deleteOption.createDiv({ cls: 'toggle-subtext', text: 'Gone forever!' });
+
+        // Toggle state
+        let deleteFiles = false;
+
+        // Toggle functionality
+        const updateToggle = (shouldDeleteFiles: boolean) => {
+            deleteFiles = shouldDeleteFiles;
+            if (shouldDeleteFiles) {
+                keepOption.removeClass('active');
+                deleteOption.addClass('active');
+            } else {
+                deleteOption.removeClass('active');
+                keepOption.addClass('active');
+            }
+        };
+
+        keepOption.addEventListener('click', () => updateToggle(false));
+        deleteOption.addEventListener('click', () => updateToggle(true));
+
+        // Action buttons
+        const buttonContainer = content.createDiv({ cls: 'delete-modal-buttons' });
+        
+        const cancelBtn = buttonContainer.createEl('button', {
+            cls: 'delete-modal-btn cancel-btn',
+            text: '❌ Cancel'
+        });
+        
+        const confirmBtn = buttonContainer.createEl('button', {
+            cls: 'delete-modal-btn confirm-btn',
+            text: '🗑️ Delete Topic'
+        });
+
+        // Event handlers
+        cancelBtn.addEventListener('click', () => {
+            modal.close();
+        });
+
+        confirmBtn.addEventListener('click', async () => {
+            modal.close();
+            await this.executeTopicDeletion(item, deleteFiles);
+        });
+
+        modal.open();
+    }
+
+    /**
+     * Execute the actual topic deletion
+     */
+    private async executeTopicDeletion(item: ChecklistItem, deleteFiles: boolean): void {
+        try {
+            // First, try the existing method
+            let project = this.getCurrentProject(item);
+            
+            // If that fails, try to find it in the currently loaded active projects
+            if (!project) {
+                try {
+                    const currentActiveProjects = this.projectTracker.getActiveProjects();
+                    project = currentActiveProjects.find((p: any) => 
+                        p.checklist && p.checklist.some((i: any) => i.id === item.id)
+                    );
+                    console.log(`🔍 Found project in current active projects: ${project?.name || 'not found'}`);
+                } catch (error) {
+                    console.error('Error getting active projects:', error);
+                }
+            }
+            
+            // If still no project, try a broader search
+            if (!project) {
+                console.log(`🔍 Searching for project with item ID: ${item.id}, item name: ${item.name}`);
+                
+                // Try to get all projects from project tracker
+                try {
+                    const allActiveProjects = this.projectTracker.getActiveProjects();
+                    const allArchivedProjects = this.projectTracker.getArchivedProjects();
+                    console.log(`🔍 Found ${allActiveProjects.length} active and ${allArchivedProjects.length} archived projects`);
+                    
+                    const allProjects = [...allActiveProjects, ...allArchivedProjects];
+                    project = allProjects.find(p => {
+                        if (p && p.checklist && Array.isArray(p.checklist)) {
+                            return p.checklist.some(i => i && i.id === item.id);
+                        }
+                        return false;
+                    });
+                    
+                    if (project) {
+                        console.log(`🔍 Found project: ${project.name}`);
+                    } else {
+                        console.log(`🔍 Could not find project in ${allProjects.length} total projects`);
+                        // Debug: log all project IDs and their checklists
+                        allProjects.forEach(p => {
+                            if (p && p.checklist) {
+                                console.log(`Project "${p.name}": ${p.checklist.length} items, IDs: [${p.checklist.map(i => i?.id).join(', ')}]`);
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error accessing project tracker:', error);
+                }
+            }
+            
+            if (!project) {
+                new Notice('❌ Could not find project for this topic. Check console for debugging info.');
+                return;
+            }
+
+            // Show deletion in progress
+            const deleteEmoji = deleteFiles ? '🔥' : '💾';
+            const actionText = deleteFiles ? 'files deleted' : 'files kept';
+            new Notice(`🗑️ Deleting topic "${item.name}" (${actionText})...`);
+
+            // Delete associated files if requested
+            if (deleteFiles && item.status === 'completed') {
+                await this.deleteTopicFiles(item, project);
+            }
+
+            // Remove topic from project
+            await this.removeTopicFromProject(project.id, item.id);
+            
+            // Refresh the sidebar
+            this.refreshActiveProjects();
+            
+            new Notice(`✅ Topic "${item.name}" deleted successfully! ${deleteEmoji}`);
+            
+        } catch (error) {
+            console.error('Failed to delete topic:', error);
+            new Notice(`❌ Failed to delete topic: ${error.message}`);
+        }
+    }
+
+    /**
+     * Delete files associated with a research topic
+     */
+    private async deleteTopicFiles(item: ChecklistItem, project: any): Promise<void> {
+        try {
+            // Find the research note file
+            const notePath = item.noteId || this.getStandardNotePath(project, item);
+            if (notePath) {
+                const file = this.app.vault.getAbstractFileByPath(notePath);
+                if (file) {
+                    await this.app.vault.delete(file);
+                    console.log(`🔥 Deleted research file: ${notePath}`);
+                }
+            }
+
+            // Delete any web search notes directory (recursively)
+            const webNotesPath = `${project.settings.outputFolder}/Web Search - ${item.name}`;
+            const webNotesFolder = this.app.vault.getAbstractFileByPath(webNotesPath);
+            if (webNotesFolder) {
+                await this.app.vault.delete(webNotesFolder, true); // true = force recursive delete
+                console.log(`🔥 Deleted web search folder: ${webNotesPath}`);
+            }
+        } catch (error) {
+            console.error('Error deleting topic files:', error);
+            throw new Error(`Failed to delete files: ${error.message}`);
+        }
+    }
+
+    /**
+     * Remove topic from project
+     */
+    private async removeTopicFromProject(projectId: string, itemId: string): Promise<void> {
+        try {
+            const project = this.projectTracker.getProject(projectId);
+            if (!project) {
+                throw new Error('Project not found');
+            }
+
+            // Remove the item from the checklist
+            project.checklist = project.checklist.filter(item => item.id !== itemId);
+            
+            // Update project progress
+            const completedCount = project.checklist.filter(item => item.status === 'completed').length;
+            const failedCount = project.checklist.filter(item => item.status === 'failed').length;
+            project.progress = {
+                completed: completedCount,
+                total: project.checklist.length,
+                failed: failedCount
+            };
+
+            // Save the updated project (access through public method if available)
+            // For now, the project should be automatically saved when modified
+            
+            console.log(`🗑️ Removed topic ${itemId} from project ${projectId}`);
+        } catch (error) {
+            console.error('Error removing topic from project:', error);
+            throw new Error(`Failed to update project: ${error.message}`);
+        }
+    }
+
+
+    /**
+     * Placeholder handler methods for research project action buttons
+     */
+    private handleProjectCardsAction(project: ResearchProject): void {
+        console.log(`🗃️ Project Cards action triggered for: ${project.name}`);
+        new Notice(`🗃️ Project Cards feature coming soon for: ${project.name}`);
+        // TODO: Implement project cards functionality
+    }
+
+    private handleProjectQuizAction(project: ResearchProject): void {
+        console.log(`📝 Project Quiz action triggered for: ${project.name}`);
+        new Notice(`📝 Project Quiz feature coming soon for: ${project.name}`);
+        // TODO: Implement project quiz functionality
+    }
+
+    private handleProjectConversationAction(project: ResearchProject): void {
+        console.log(`🔊 Project Conversation action triggered for: ${project.name}`);
+        new Notice(`🔊 Project Conversation feature coming soon for: ${project.name}`);
+        // TODO: Implement project conversation functionality
+    }
+
+    private handleProjectRefreshAction(project: ResearchProject): void {
+        console.log(`🔃 Project Refresh action triggered for: ${project.name}`);
+        new Notice(`🔃 Refreshing project: ${project.name}`);
+        // TODO: Implement project refresh functionality
+        // This could trigger re-research or data refresh for the entire project
+    }
+
+    private handleProjectTrashAction(project: ResearchProject): void {
+        console.log(`🗑️ Project Trash action triggered for: ${project.name}`);
+        new Notice(`🗑️ Project delete feature coming soon for: ${project.name}`);
+        // TODO: Implement project delete functionality
+        // This should probably use the existing cancelProject method
+    }
+
+    /**
+     * Render inline project settings within the tab
+     */
+    private renderInlineProjectSettings(container: HTMLElement, project: ResearchProject): void {
+        container.empty();
+        
+        // Settings form
+        const settingsForm = container.createEl('form', { cls: 'inline-settings-form' });
+        
+        // Output folder setting
+        const outputFolderGroup = settingsForm.createDiv({ cls: 'settings-group' });
+        outputFolderGroup.createEl('label', { text: 'Output Folder:' });
+        const outputFolderInput = outputFolderGroup.createEl('input', {
+            type: 'text',
+            cls: 'settings-input',
+            attr: { value: project.settings.outputFolder || 'Generated Research Notes' }
+        });
+        
+        // Research options
+        const optionsGroup = settingsForm.createDiv({ cls: 'settings-group' });
+        optionsGroup.createEl('h4', { text: 'Research Options' });
+        
+        // Web search toggle
+        const webSearchLabel = optionsGroup.createEl('label', { cls: 'checkbox-label' });
+        const webSearchCheckbox = webSearchLabel.createEl('input', { type: 'checkbox' });
+        webSearchCheckbox.checked = project.settings.enableWebSearch;
+        webSearchLabel.createSpan({ text: 'Enable web search' });
+        
+        // Save individual pages toggle
+        const saveIndividualLabel = optionsGroup.createEl('label', { cls: 'checkbox-label' });
+        const saveIndividualCheckbox = saveIndividualLabel.createEl('input', { type: 'checkbox' });
+        saveIndividualCheckbox.checked = project.settings.saveIndividualPages;
+        saveIndividualLabel.createSpan({ text: 'Save individual pages' });
+        
+        // Vault search toggle
+        const vaultSearchLabel = optionsGroup.createEl('label', { cls: 'checkbox-label' });
+        const vaultSearchCheckbox = vaultSearchLabel.createEl('input', { type: 'checkbox' });
+        vaultSearchCheckbox.checked = project.settings.searchVaultExactWords;
+        vaultSearchLabel.createSpan({ text: 'Search vault for exact words' });
+        
+        // AI enhance toggle
+        const aiEnhanceLabel = optionsGroup.createEl('label', { cls: 'checkbox-label' });
+        const aiEnhanceCheckbox = aiEnhanceLabel.createEl('input', { type: 'checkbox' });
+        aiEnhanceCheckbox.checked = project.settings.aiEnhanceFinalNote;
+        aiEnhanceLabel.createSpan({ text: 'AI enhance final notes' });
+        
+        // Advanced settings
+        const advancedGroup = settingsForm.createDiv({ cls: 'settings-group' });
+        advancedGroup.createEl('h4', { text: 'Advanced Settings' });
+        
+        // Max web search results
+        const maxResultsLabel = advancedGroup.createEl('label', { text: 'Max web search results per item:' });
+        const maxResultsInput = advancedGroup.createEl('input', {
+            type: 'number',
+            cls: 'settings-input',
+            attr: { 
+                value: String(project.settings.maxWebSearchResults || 10),
+                min: '5',
+                max: '20'
+            }
+        });
+        
+        // Custom template selection
+        const templateLabel = advancedGroup.createEl('label', { text: 'Template:' });
+        const templateSelect = advancedGroup.createEl('select', { cls: 'settings-select' });
+        
+        // Template options (same as in Research Template Manager)
+        const templateOptions = [
+            { value: 'research-standard', name: 'Research Standard' },
+            { value: 'research-minimal', name: 'Research Minimal' },
+            { value: 'research-scientific', name: 'Research Scientific' },
+            { value: 'custom', name: 'Custom Template' }
+        ];
+        
+        templateOptions.forEach(template => {
+            const option = templateSelect.createEl('option', { 
+                text: template.name,
+                attr: { value: template.value }
+            });
+            if (template.value === (project.settings.customTemplate || 'research-standard')) {
+                option.selected = true;
+            }
+        });
+        
+        // Save button
+        const saveBtn = settingsForm.createEl('button', {
+            cls: 'save-settings-btn',
+            text: '💾 Save Settings',
+            type: 'button'
+        });
+        
+        saveBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            
+            try {
+                // Update project settings
+                const updatedSettings = {
+                    outputFolder: outputFolderInput.value || 'Generated Research Notes',
+                    enableWebSearch: webSearchCheckbox.checked,
+                    saveIndividualPages: saveIndividualCheckbox.checked,
+                    searchVaultExactWords: vaultSearchCheckbox.checked,
+                    aiEnhanceFinalNote: aiEnhanceCheckbox.checked,
+                    maxWebSearchResults: parseInt(maxResultsInput.value) || 10,
+                    customTemplate: templateSelect.value,
+                    // Keep existing settings for other fields
+                    enableSemanticSearch: project.settings.enableSemanticSearch
+                };
+                
+                await this.projectTracker.updateProjectSettings(project.id, updatedSettings);
+                new Notice(`✅ Settings updated for: ${project.name}`);
+            } catch (error) {
+                console.error('Failed to save settings:', error);
+                new Notice('❌ Failed to save settings');
+            }
+        });
+    }
+
+    /**
+     * Open template manager modal
+     */
+    private openTemplateManager(): void {
+        const modal = new ResearchTemplateModal(this.app, this.plugin);
+        modal.open();
+    }
+}
+
+/**
+ * Research Template Management Modal
+ */
+class ResearchTemplateModal extends Modal {
+    plugin: ClippyPlugin;
+    currentTemplate: string = 'research-standard';
+    textArea: HTMLTextAreaElement;
+
+    constructor(app: App, plugin: ClippyPlugin) {
+        super(app);
+        this.plugin = plugin;
+        this.currentTemplate = plugin.settings.research.defaults.template;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        
+        contentEl.createEl('h2', { text: '📋 Research Template Manager' });
+        contentEl.createEl('p', { 
+            text: 'View, edit, and customize research note templates. Templates use {{variables}} for dynamic content.',
+            cls: 'setting-item-description'
+        });
+
+        // Template Selection
+        const templateSection = contentEl.createEl('div', { cls: 'template-selection-section' });
+        templateSection.style.cssText = 'margin: 16px 0;';
+
+        const templateHeader = templateSection.createEl('h3', { text: 'Template Selection' });
+        const templateControls = templateSection.createEl('div', { cls: 'template-controls' });
+        templateControls.style.cssText = 'display: flex; gap: 12px; align-items: center; margin: 12px 0;';
+
+        const dropdown = templateControls.createEl('select', { cls: 'dropdown' });
+        dropdown.style.cssText = 'flex: 0 0 200px;';
+
+        const templates = [
+            { value: 'research-standard', name: 'Research Standard' },
+            { value: 'research-minimal', name: 'Research Minimal' },
+            { value: 'research-scientific', name: 'Research Scientific' },
+            { value: 'custom', name: 'Custom Template' }
+        ];
+
+        templates.forEach(template => {
+            const option = dropdown.createEl('option', { 
+                text: template.name,
+                attr: { value: template.value }
+            });
+            if (template.value === this.currentTemplate) {
+                option.selected = true;
+            }
+        });
+
+        // Template Actions
+        const setDefaultBtn = templateControls.createEl('button', {
+            text: '⭐ Set as Default',
+            type: 'button'
+        });
+        setDefaultBtn.style.cssText = 'padding: 6px 12px; font-size: 12px;';
+
+        // Available Variables Section
+        const variablesSection = contentEl.createEl('div', { cls: 'variables-section' });
+        variablesSection.style.cssText = 'margin: 20px 0;';
+
+        variablesSection.createEl('h3', { text: 'Available Variables' });
+        
+        const variablesGrid = variablesSection.createEl('div', { cls: 'variables-grid' });
+        variablesGrid.style.cssText = `
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 8px;
+            margin: 12px 0;
+            font-family: var(--font-monospace);
+            font-size: 11px;
+        `;
+
+        const variables = [
+            { var: '{{tags}}', desc: 'AI-generated vault-aware tags' },
+            { var: '{{projectName}}', desc: 'Research project name' },
+            { var: '{{topicName}}', desc: 'Current research topic' },
+            { var: '{{today}}', desc: 'Current date (YYYY-MM-DD)' },
+            { var: '{{EXTRACTED_WISDOM}}', desc: 'AI-synthesized insights' },
+            { var: '{{VAULT_SEARCH_RESULTS}}', desc: 'Relevant vault content' },
+            { var: '{{WEB_SEARCH_RESULTS}}', desc: 'Web research findings' },
+            { var: '{{RESEARCH_BACKLINKS}}', desc: 'Related concept links' }
+        ];
+
+        variables.forEach(v => {
+            const varDiv = variablesGrid.createEl('div', { cls: 'variable-item' });
+            varDiv.style.cssText = `
+                padding: 6px 8px;
+                background: var(--background-secondary);
+                border-radius: 4px;
+                border: 1px solid var(--background-modifier-border);
+            `;
+            
+            const varName = varDiv.createEl('div', { text: v.var });
+            varName.style.cssText = 'color: var(--color-accent); font-weight: 500;';
+            
+            const varDesc = varDiv.createEl('div', { text: v.desc });
+            varDesc.style.cssText = 'color: var(--text-muted); font-size: 10px; margin-top: 2px;';
+        });
+
+        // Template Editor
+        const editorSection = contentEl.createEl('div', { cls: 'template-editor-section' });
+        editorSection.style.cssText = 'margin: 20px 0;';
+
+        editorSection.createEl('h3', { text: 'Template Content' });
+
+        this.textArea = editorSection.createEl('textarea', { cls: 'template-editor' });
+        this.textArea.style.cssText = `
+            width: 100%;
+            height: 300px;
+            font-family: var(--font-monospace);
+            font-size: 12px;
+            border: 1px solid var(--background-modifier-border);
+            border-radius: 4px;
+            padding: 12px;
+            background: var(--background-primary);
+            color: var(--text-normal);
+            resize: vertical;
+        `;
+
+        // Load current template
+        this.loadTemplate().catch(error => {
+            console.error('Failed to load initial template:', error);
+        });
+
+        // Action Buttons
+        const buttonSection = contentEl.createEl('div', { cls: 'template-actions' });
+        buttonSection.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px;';
+
+        const saveBtn = buttonSection.createEl('button', { 
+            text: '💾 Save Template', 
+            type: 'button', 
+            cls: 'mod-cta' 
+        });
+
+        const resetBtn = buttonSection.createEl('button', { 
+            text: '🔄 Reset to Default', 
+            type: 'button' 
+        });
+
+        const closeBtn = buttonSection.createEl('button', { 
+            text: 'Close', 
+            type: 'button' 
+        });
+
+        // Event Handlers
+        dropdown.addEventListener('change', () => {
+            this.currentTemplate = dropdown.value;
+            this.loadTemplate().catch(error => {
+                console.error('Failed to load template:', error);
+            });
+        });
+
+        setDefaultBtn.addEventListener('click', async () => {
+            this.plugin.settings.research.defaults.template = this.currentTemplate;
+            await this.plugin.saveSettings();
+            new Notice(`✅ Set "${templates.find(t => t.value === this.currentTemplate)?.name}" as default template`);
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            try {
+                const templateContent = this.textArea.value;
+                
+                // Validate template content is not empty
+                if (!templateContent.trim()) {
+                    new Notice('❌ Template cannot be empty');
+                    return;
+                }
+
+                // Initialize templates object if it doesn't exist
+                if (!this.plugin.settings.research.templates) {
+                    this.plugin.settings.research.templates = {};
+                }
+
+                // Save the template based on the current template type
+                if (this.currentTemplate === 'custom' || this.currentTemplate === 'research-standard') {
+                    // For custom or editing the standard, save as the research template
+                    this.plugin.settings.research.templates.research = templateContent;
+                } else {
+                    // For other template types, save with their specific key
+                    this.plugin.settings.research.templates[this.currentTemplate] = templateContent;
+                }
+
+                // Also update the default template setting to use this template
+                this.plugin.settings.research.defaults.template = 'custom';
+                
+                // Save settings to disk
+                await this.plugin.saveSettings();
+                
+                new Notice('✅ Template saved successfully!');
+                console.log(`Template "${this.currentTemplate}" saved:`, templateContent.substring(0, 100) + '...');
+            } catch (error) {
+                console.error('Failed to save template:', error);
+                new Notice('❌ Failed to save template. Please try again.');
+            }
+        });
+
+        resetBtn.addEventListener('click', async () => {
+            await this.loadTemplate();
+            new Notice('🔄 Template reset to default');
+        });
+
+        closeBtn.addEventListener('click', () => {
+            this.close();
+        });
+    }
+
+    private async loadTemplate(): Promise<void> {
+        try {
+            // Get template content based on current selection
+            const template = await this.getTemplateContent(this.currentTemplate);
+            this.textArea.value = template;
+        } catch (error) {
+            console.error('Failed to load template:', error);
+            this.textArea.value = '// Failed to load template. Please try again.';
+        }
+    }
+
+    private async getTemplateContent(templateType: string): Promise<string> {
+        // Import ComprehensiveResearchSystem to get the RESEARCH_STANDARD_TEMPLATE
+        const { ComprehensiveResearchSystem } = await import('../research/comprehensive-research-system');
+
+        // Try to get saved template based on the type
+        if (this.plugin.settings.research.templates) {
+            if (templateType === 'custom') {
+                // For custom, return the saved research template if it exists
+                return this.plugin.settings.research.templates.research || ComprehensiveResearchSystem.RESEARCH_STANDARD_TEMPLATE;
+            } else if (templateType === 'research-standard') {
+                // For the standard template, return the standard template from the system
+                return ComprehensiveResearchSystem.RESEARCH_STANDARD_TEMPLATE;
+            } else {
+                // For other template types, try to load their saved version
+                return this.plugin.settings.research.templates[templateType] || await this.getBuiltInTemplate(templateType);
+            }
+        }
+
+        // Fallback to standard template
+        return ComprehensiveResearchSystem.RESEARCH_STANDARD_TEMPLATE;
+    }
+
+    private async getBuiltInTemplate(templateType: string): Promise<string> {
+        // Import ComprehensiveResearchSystem for fallback
+        const { ComprehensiveResearchSystem } = await import('../research/comprehensive-research-system');
+        
+        switch (templateType) {
+            case 'research-minimal':
+                return `---
+project: "{{projectName}}"
+status: "in-progress"
+created: "{{today}}"
+{{tags}}
+---
+
+# {{topicName}}
+
+## Overview
+{{EXTRACTED_WISDOM}}
+
+## Sources
+{{VAULT_SEARCH_RESULTS}}
+{{WEB_SEARCH_RESULTS}}
+
+---
+*Generated by CLIPPY Research Agent*`;
+
+            case 'research-scientific':
+                return `---
+project: "{{projectName}}"
+status: "in-progress"
+created: "{{today}}"
+methodology: "systematic-review"
+{{tags}}
+---
+
+# {{topicName}}: Systematic Analysis
+
+## Abstract
+{{EXTRACTED_WISDOM}}
+
+## Literature Review
+{{VAULT_SEARCH_RESULTS}}
+
+## Methodology
+*[Research methodology and approach]*
+
+## Results
+{{WEB_SEARCH_RESULTS}}
+
+## Discussion
+*[Analysis and interpretation of findings]*
+
+## References
+*[Scientific citations and references]*
+
+---
+*Generated by CLIPPY Research Agent*`;
+
+            default:
+                return ComprehensiveResearchSystem.RESEARCH_STANDARD_TEMPLATE;
+        }
     }
 }

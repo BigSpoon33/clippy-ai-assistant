@@ -191,7 +191,7 @@ export class VoiceManager implements VoiceEventEmitter {
             this.state.statistics.sessionsStarted++;
 
             // Start wake word detection if available
-            if (this.config.wakeWord.primary && this.state.capabilities.wakeWordAvailable.length > 0) {
+            if (this.config.wakeWordConfig.primary && this.state.capabilities.wakeWordAvailable.length > 0) {
                 await this.wakeWordManager.startDetection();
                 this.state.status = VoiceStatus.LISTENING;
             }

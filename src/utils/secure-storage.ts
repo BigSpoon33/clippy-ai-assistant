@@ -225,13 +225,18 @@ export class ContentSanitizer {
    * Remove potential API keys from content
    */
   static sanitizeContent(content: string): string {
-    if (!content) return content;
+    if (!content || typeof content !== 'string') return String(content || '');
 
     let sanitized = content;
     
-    this.API_KEY_PATTERNS.forEach(pattern => {
-      sanitized = sanitized.replace(pattern, '[REDACTED_API_KEY]');
-    });
+    try {
+      this.API_KEY_PATTERNS.forEach(pattern => {
+        sanitized = sanitized.replace(pattern, '[REDACTED_API_KEY]');
+      });
+    } catch (e) {
+      console.warn('Error sanitizing content:', e);
+      return '[SANITIZATION_ERROR]';
+    }
 
     return sanitized;
   }
@@ -251,7 +256,19 @@ export class ContentSanitizer {
   static sanitizeError(error: any): string {
     if (!error) return '';
 
-    let message = error.message || error.toString();
+    let message: string;
+    try {
+      if (typeof error === 'string') {
+        message = error;
+      } else if (error.message) {
+        message = String(error.message);
+      } else {
+        message = String(error);
+      }
+    } catch (e) {
+      message = 'Unknown error';
+    }
+
     return this.sanitizeContent(message);
   }
 }

@@ -16,6 +16,7 @@ import { EnhancementModal, TaggingModal } from './ui/modals';
 import { ClippyInsightsView, VIEW_TYPE_CLIPPY_INSIGHTS } from './ui/views';
 import { VaultAgentSidebarView, VIEW_TYPE_VAULT_AGENT } from './ui/vault-agent-sidebar-view';
 import { ResearchAgentSidebarView, VIEW_TYPE_RESEARCH_AGENT } from './ui/research-agent-sidebar-view';
+import { UIShowcaseView, VIEW_TYPE_UI_SHOWCASE } from './ui/ui-showcase-view';
 import { ContentEnhancer } from './features/content-processing/services/content-enhancer';
 import { TagGenerator } from './features/content-processing/services/tag-generator';
 import { TagEditor } from './features/content-processing/services/tag-editor';
@@ -35,6 +36,10 @@ import { LocalVoiceIntegration } from './voice/local-voice-integration';
 
 // MoE System imports  
 import { SimpleMoEOrchestrator } from './agents/simple-moe';
+
+// TCG System imports
+import { integrateWithPlugin, TCGSystem } from './features/tcg/tcg-main';
+import { ActivityTracker } from './ui/components/mascot/activity-tracker';
 
 // Research System imports
 import { ProjectTracker } from './research/project-tracker';
@@ -77,6 +82,9 @@ export default class ClippyPlugin extends Plugin {
   // MoE System
   private moeOrchestrator: SimpleMoEOrchestrator | null = null;
 
+  // TCG System
+  public tcgSystem: any = null;
+
   async onload() {
     console.log('CLIPPY AI Assistant: Loading plugin...');
 
@@ -108,6 +116,16 @@ export default class ClippyPlugin extends Plugin {
     if (this.moeOrchestrator) {
       // MoE system cleanup if needed
       this.moeOrchestrator = null;
+    }
+    
+    // Cleanup embedding manager (stops auto-save timer and saves cache)
+    if (this.embeddingManager) {
+      try {
+        await this.embeddingManager.cleanup();
+        console.log('🔍 EMBED: Embedding manager cleaned up and cache saved on unload');
+      } catch (err) {
+        console.warn('🔍 EMBED: Failed to cleanup embedding manager on unload:', err);
+      }
     }
     
     // Clear any caches
@@ -162,8 +180,25 @@ export default class ClippyPlugin extends Plugin {
         // Initialize shared research system components
         this.projectTracker = new ProjectTracker(this.app);
 
-        // Initialize shared knowledge management components using centralized RAG settings
-        this.embeddingManager = new EmbeddingManager(this.settings.rag.embeddings.ollamaUrl, this.settings);
+        // Initialize shared knowledge management components using centralized RAG settings with persistent storage
+        // Use manifest.dir which is provided by Obsidian with the correct plugin directory path
+        const pluginDataPath = (this as any).manifest?.dir || '.obsidian/plugins/clippy-ai-assistant';
+        console.log('🔍 EMBED: Plugin data path:', pluginDataPath);
+        
+        this.embeddingManager = new EmbeddingManager(
+          this.settings.rag.embeddings.ollamaUrl, 
+          this.settings,
+          this.app,
+          pluginDataPath + '/data'
+        );
+        
+        // Initialize the embedding manager asynchronously to load persistent cache
+        this.embeddingManager.initialize().then(() => {
+          console.log('🔍 EMBED: Plugin-level embedding manager initialized with persistent storage');
+        }).catch(err => {
+          console.warn('🔍 EMBED: Failed to initialize plugin-level embedding manager:', err);
+        });
+        
         this.similarityEngine = new SimilarityEngine(this.embeddingManager);
         
         // Initialize shared RAG system
@@ -197,6 +232,11 @@ export default class ClippyPlugin extends Plugin {
           await this.initializeMoESystem();
         }
 
+        // Initialize TCG system if enabled
+        if (this.settings.tcg?.enabled) {
+          await this.initializeTCGSystem();
+        }
+
         // Initialize command handlers
         this.commandHandlers = new CommandHandlers(this);
         this.commandHandlers.registerCommands();
@@ -228,6 +268,11 @@ export default class ClippyPlugin extends Plugin {
         this.registerView(
           VIEW_TYPE_RESEARCH_AGENT,
           (leaf) => new ResearchAgentSidebarView(leaf, this)
+        );
+        
+        this.registerView(
+          VIEW_TYPE_UI_SHOWCASE,
+          (leaf) => new UIShowcaseView(leaf, this)
         );
 
         // Schedule vault analysis in background
@@ -330,6 +375,38 @@ export default class ClippyPlugin extends Plugin {
     } catch (error) {
       console.error('CLIPPY: Simple MoE System initialization failed:', error);
       new Notice('Simple MoE System initialization failed - check console for details', 5000);
+    }
+  }
+
+  /**
+   * Initialize the TCG system
+   * 
+   * Sets up the Trading Card Game system for gamified writing
+   */
+  private async initializeTCGSystem(): Promise<void> {
+    try {
+      console.log('CLIPPY: Initializing TCG System...');
+      
+      // Create real ActivityTracker instance
+      const activityTracker = new ActivityTracker(this.app);
+      
+      // Initialize TCG system using the integration function
+      this.tcgSystem = await integrateWithPlugin(
+        this.app,
+        this,
+        this.settings,
+        activityTracker
+      );
+      
+      if (this.tcgSystem) {
+        console.log('CLIPPY: TCG System initialized successfully');
+      } else {
+        console.warn('CLIPPY: TCG System initialization returned null');
+      }
+      
+    } catch (error) {
+      console.error('CLIPPY: TCG System initialization failed:', error);
+      new Notice('TCG System initialization failed - check console for details', 5000);
     }
   }
 

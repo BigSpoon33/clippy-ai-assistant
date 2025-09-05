@@ -55,7 +55,7 @@ export class TCGDashboardView extends ItemView {
   /**
    * Refresh the dashboard content
    */
-  private refresh(): void {
+  public refresh(): void {
     const container = this.containerEl.children[1];
     container.empty();
     

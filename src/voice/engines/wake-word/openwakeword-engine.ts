@@ -23,7 +23,7 @@ export class OpenWakeWordEngine extends BaseWakeWordEngine {
         super(VoiceEngineType.OPENWAKEWORD, config, eventEmitter);
         
         // Get OpenWakeWord configuration
-        const owwConfig = config.wakeWord.engines[VoiceEngineType.OPENWAKEWORD];
+        const owwConfig = config.wakeWordConfig.engines[VoiceEngineType.OPENWAKEWORD];
         if (owwConfig && owwConfig.settings) {
             this.pythonPath = owwConfig.settings.pythonPath || 'python';
             this.openWakeWordPath = owwConfig.settings.openWakeWordPath || '';
@@ -230,7 +230,17 @@ print("test_complete: True")
     }
 
     private createDetectionScript(): string {
-        const modelsString = this.loadedModels.map(m => `"${m}"`).join(', ');
+        // Get full paths for the models
+        const modelPathsScript = this.loadedModels.length > 0 
+            ? `model_paths = ${JSON.stringify(this.loadedModels)}`
+            : `
+# Get pretrained model paths
+import openwakeword
+model_paths = [
+    path for path in openwakeword.get_pretrained_model_paths() 
+    if any(name in path for name in ['hey_mycroft', 'hey_jarvis', 'alexa'])
+][:3]  # Limit to first 3 models
+`;
         
         return `
 import openwakeword.model
@@ -240,8 +250,13 @@ import time
 import json
 import sys
 
-# Initialize model
-model = openwakeword.model.Model()
+${modelPathsScript}
+
+print(f"Loading OpenWakeWord models: {model_paths}")
+sys.stdout.flush()
+
+# Initialize model with specific models
+model = openwakeword.model.Model(model_paths)
 
 # Audio configuration
 CHUNK = ${this.config.audio.chunkSize}
@@ -337,16 +352,27 @@ finally:
 
     protected async loadModels(models: string[]): Promise<boolean> {
         try {
-            // Filter models to only include ones that exist
-            const availableModels = await this.getAvailableModels();
-            this.loadedModels = models.filter(model => availableModels.includes(model));
+            // Get full model paths from Python
+            const modelPaths = await this.getAvailableModelPaths();
             
-            if (this.loadedModels.length === 0) {
-                // If no specific models found, use defaults
-                this.loadedModels = availableModels.slice(0, 3); // Load first 3 available models
+            // Filter to requested models or use defaults
+            if (models.length > 0) {
+                this.loadedModels = modelPaths.filter(path => 
+                    models.some(model => path.includes(model))
+                );
+            } else {
+                // Use default models: hey_mycroft, hey_jarvis, alexa
+                this.loadedModels = modelPaths.filter(path => 
+                    path.includes('hey_mycroft') || path.includes('hey_jarvis') || path.includes('alexa')
+                );
             }
             
-            this.logger.debug(`[${this.engineType}] Loaded models: ${this.loadedModels.join(', ')}`);
+            if (this.loadedModels.length === 0) {
+                // Fallback: use first 3 available models
+                this.loadedModels = modelPaths.slice(0, 3);
+            }
+            
+            this.logger.debug(`[${this.engineType}] Loaded model paths: ${this.loadedModels.join(', ')}`);
             return true;
             
         } catch (error) {
@@ -448,6 +474,58 @@ except Exception as e:
             setTimeout(() => {
                 python.kill();
                 resolve(['hey_mycroft', 'alexa']); // Fallback
+            }, 5000);
+        });
+    }
+
+    public async getAvailableModelPaths(): Promise<string[]> {
+        return new Promise((resolve, reject) => {
+            const { spawn } = require('child_process');
+
+            const modelsScript = `
+import openwakeword
+import json
+try:
+    model_paths = openwakeword.get_pretrained_model_paths()
+    print("MODEL_PATHS:", json.dumps(model_paths))
+except Exception as e:
+    print("ERROR:", str(e))
+            `;
+
+            const python = spawn(this.pythonPath, ['-c', modelsScript]);
+            let output = '';
+
+            python.stdout.on('data', (data: any) => {
+                output += data.toString();
+            });
+
+            python.on('close', (code: any) => {
+                if (code === 0 && output.includes('MODEL_PATHS:')) {
+                    const modelPathsLine = output.split('\n').find(line => line.startsWith('MODEL_PATHS:'));
+                    if (modelPathsLine) {
+                        const modelPathsString = modelPathsLine.substring(12); // Remove "MODEL_PATHS:" prefix
+                        try {
+                            const modelPaths = JSON.parse(modelPathsString);
+                            resolve(modelPaths);
+                        } catch (e) {
+                            resolve([]);
+                        }
+                    } else {
+                        resolve([]);
+                    }
+                } else {
+                    // Return empty array if detection fails
+                    resolve([]);
+                }
+            });
+
+            python.stderr.on('data', (data: any) => {
+                this.logger.warn(`[${this.engineType}] Model paths stderr: ${data.toString()}`);
+            });
+
+            setTimeout(() => {
+                python.kill();
+                resolve([]); // Fallback
             }, 5000);
         });
     }
